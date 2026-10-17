@@ -1,0 +1,153 @@
+from datetime import datetime
+
+from sqlalchemy import (
+    JSON,
+    BigInteger,
+    Boolean,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
+from sqlalchemy.ext.asyncio import AsyncAttrs
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+
+
+class Base(AsyncAttrs, DeclarativeBase):
+    pass
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    telegram_id: Mapped[int | None] = mapped_column(BigInteger, unique=True)
+    name: Mapped[str] = mapped_column(String(200))
+    username: Mapped[str | None] = mapped_column(String(100))
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class Category(Base):
+    __tablename__ = "categories"
+    __table_args__ = (UniqueConstraint("parent_id", "name"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(100))
+    parent_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id", ondelete="RESTRICT"))
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+
+    parent: Mapped["Category | None"] = relationship(remote_side=[id], lazy="joined")
+
+
+class Receipt(Base):
+    __tablename__ = "receipts"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    # photo | manual | recurring
+    source: Mapped[str] = mapped_column(String(20), default="photo")
+    store: Mapped[str | None] = mapped_column(String(200))
+    purchased_at: Mapped[datetime | None] = mapped_column(DateTime, index=True)
+    total: Mapped[float | None] = mapped_column(Float)  # EUR
+    image_path: Mapped[str | None] = mapped_column(String(300))
+    qr_raw: Mapped[str | None] = mapped_column(String(300))
+    fiscal_key: Mapped[str | None] = mapped_column(String(100), unique=True)
+    # pending | ok | needs_review | failed
+    status: Mapped[str] = mapped_column(String(20), default="pending", index=True)
+    review_reason: Mapped[str | None] = mapped_column(Text)
+    llm_model: Mapped[str | None] = mapped_column(String(200))
+    raw_llm_json: Mapped[dict | None] = mapped_column(JSON)
+    note: Mapped[str | None] = mapped_column(Text)
+    chat_id: Mapped[int | None] = mapped_column(BigInteger)
+    message_id: Mapped[int | None] = mapped_column(Integer)
+    # bot's reply about this receipt: replying to it in the chat edits the receipt
+    bot_message_id: Mapped[int | None] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    user: Mapped[User | None] = relationship(lazy="joined")
+    items: Mapped[list["Item"]] = relationship(
+        back_populates="receipt",
+        cascade="all, delete-orphan",
+        order_by="Item.position",
+        lazy="selectin",
+    )
+
+
+class Item(Base):
+    __tablename__ = "items"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    receipt_id: Mapped[int] = mapped_column(ForeignKey("receipts.id", ondelete="CASCADE"), index=True)
+    position: Mapped[int] = mapped_column(Integer, default=0)
+    name_original: Mapped[str] = mapped_column(String(300))
+    name_ru: Mapped[str | None] = mapped_column(String(300))
+    name_normalized: Mapped[str] = mapped_column(String(300), index=True)
+    qty: Mapped[float] = mapped_column(Float, default=1.0)
+    unit_price: Mapped[float | None] = mapped_column(Float)
+    total: Mapped[float] = mapped_column(Float)
+    category_id: Mapped[int | None] = mapped_column(
+        ForeignKey("categories.id", ondelete="SET NULL"), index=True
+    )
+
+    receipt: Mapped[Receipt] = relationship(back_populates="items")
+    category: Mapped[Category | None] = relationship(lazy="joined")
+
+
+class CategoryOverride(Base):
+    """Remembered manual category choice for a product name."""
+
+    __tablename__ = "category_overrides"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name_normalized: Mapped[str] = mapped_column(String(300), unique=True)
+    category_id: Mapped[int] = mapped_column(ForeignKey("categories.id", ondelete="CASCADE"))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now()
+    )
+
+
+class Budget(Base):
+    """Monthly spending limit for a category (and its children), in EUR."""
+
+    __tablename__ = "budgets"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    category_id: Mapped[int] = mapped_column(
+        ForeignKey("categories.id", ondelete="CASCADE"), unique=True
+    )
+    amount: Mapped[float] = mapped_column(Float)
+
+    category: Mapped[Category] = relationship(lazy="joined")
+
+
+class BudgetAlert(Base):
+    __tablename__ = "budget_alerts"
+    __table_args__ = (UniqueConstraint("budget_id", "month", "level"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    budget_id: Mapped[int] = mapped_column(ForeignKey("budgets.id", ondelete="CASCADE"))
+    month: Mapped[str] = mapped_column(String(7))  # YYYY-MM
+    level: Mapped[int] = mapped_column(Integer)  # 80 | 100
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class Recurring(Base):
+    """Regular payment that is booked automatically each month."""
+
+    __tablename__ = "recurring"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(200))
+    amount: Mapped[float] = mapped_column(Float)  # EUR
+    category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id", ondelete="SET NULL"))
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    day_of_month: Mapped[int] = mapped_column(Integer, default=1)
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    last_booked_month: Mapped[str | None] = mapped_column(String(7))
+
+    category: Mapped[Category | None] = relationship(lazy="joined")
+    user: Mapped[User | None] = relationship(lazy="joined")

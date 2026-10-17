@@ -1,0 +1,22 @@
+services:
+  check-bot:
+    build: .
+    image: check-bot:latest
+    container_name: check-bot
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # inside the container the app always listens on 8000 and keeps data in /app/data
+      WEB_HOST: 0.0.0.0
+      WEB_PORT: 8000
+      DATABASE_URL: sqlite+aiosqlite:////app/data/app.db
+      DATA_DIR: /app/data
+    ports:
+      - "${WEB_PORT:-8000}:8000"
+    volumes:
+      - ./data:/app/data
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"

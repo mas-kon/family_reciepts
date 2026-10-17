@@ -1,0 +1,15 @@
+[Unit]
+Description=Check bot: family expenses (Telegram bot + web)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/root/check_bot/backend
+ExecStart=/root/.local/bin/uv run --frozen python -m app.main
+Restart=on-failure
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

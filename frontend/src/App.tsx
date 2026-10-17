@@ -1,0 +1,132 @@
+import {
+  ActionIcon,
+  AppShell,
+  Burger,
+  Center,
+  Group,
+  Loader,
+  NavLink,
+  Text,
+  Title,
+  useMantineColorScheme,
+} from '@mantine/core'
+import { useDisclosure } from '@mantine/hooks'
+import {
+  IconChartBar,
+  IconLogout,
+  IconMoon,
+  IconReceipt,
+  IconSettings,
+  IconSun,
+  IconTrendingUp,
+} from '@tabler/icons-react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { Link, Navigate, Route, Routes, useLocation } from 'react-router-dom'
+import { api, ApiError } from './api'
+import Dashboard from './pages/Dashboard'
+import Login from './pages/Login'
+import Products from './pages/Products'
+import ReceiptDetailPage from './pages/ReceiptDetail'
+import Receipts from './pages/Receipts'
+import Settings from './pages/Settings'
+
+interface Me {
+  user_id: number | null
+  name: string
+  method: string
+}
+
+const NAV = [
+  { to: '/', label: 'Статистика', icon: IconChartBar },
+  { to: '/receipts', label: 'Чеки', icon: IconReceipt },
+  { to: '/products', label: 'Цены', icon: IconTrendingUp },
+  { to: '/settings', label: 'Настройки', icon: IconSettings },
+]
+
+export default function App() {
+  const [opened, { toggle, close }] = useDisclosure()
+  const location = useLocation()
+  const qc = useQueryClient()
+  const { colorScheme, setColorScheme } = useMantineColorScheme()
+  const me = useQuery({
+    queryKey: ['me'],
+    queryFn: () => api<Me>('/auth/me'),
+    retry: false,
+  })
+
+  if (me.isLoading) {
+    return (
+      <Center h="100vh">
+        <Loader />
+      </Center>
+    )
+  }
+  if (me.error instanceof ApiError && me.error.status === 401) {
+    return <Login onDone={() => qc.invalidateQueries({ queryKey: ['me'] })} />
+  }
+
+  const logout = async () => {
+    await api('/auth/logout', { method: 'POST' })
+    qc.clear()
+    qc.invalidateQueries({ queryKey: ['me'] })
+  }
+
+  return (
+    <AppShell
+      header={{ height: 56 }}
+      navbar={{ width: 220, breakpoint: 'sm', collapsed: { mobile: !opened } }}
+      padding="md"
+    >
+      <AppShell.Header>
+        <Group h="100%" px="md" justify="space-between">
+          <Group>
+            <Burger opened={opened} onClick={toggle} hiddenFrom="sm" size="sm" />
+            <Title order={4}>Семейные расходы</Title>
+          </Group>
+          <Group gap="xs">
+            <Text size="sm" c="dimmed" visibleFrom="xs">
+              {me.data?.name}
+            </Text>
+            <ActionIcon
+              variant="subtle"
+              aria-label="Тема"
+              onClick={() => setColorScheme(colorScheme === 'dark' ? 'light' : 'dark')}
+            >
+              {colorScheme === 'dark' ? <IconSun size={18} /> : <IconMoon size={18} />}
+            </ActionIcon>
+            {me.data?.method !== 'disabled' && (
+              <ActionIcon variant="subtle" aria-label="Выйти" onClick={logout}>
+                <IconLogout size={18} />
+              </ActionIcon>
+            )}
+          </Group>
+        </Group>
+      </AppShell.Header>
+
+      <AppShell.Navbar p="xs">
+        {NAV.map((n) => (
+          <NavLink
+            key={n.to}
+            component={Link}
+            to={n.to}
+            label={n.label}
+            leftSection={<n.icon size={18} />}
+            active={n.to === '/' ? location.pathname === '/' : location.pathname.startsWith(n.to)}
+            onClick={close}
+          />
+        ))}
+      </AppShell.Navbar>
+
+      <AppShell.Main>
+        <Routes>
+          <Route path="/" element={<Dashboard />} />
+          <Route path="/receipts" element={<Receipts />} />
+          <Route path="/receipts/:id" element={<ReceiptDetailPage />} />
+          <Route path="/products" element={<Products />} />
+          <Route path="/settings" element={<Settings />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </AppShell.Main>
+    </AppShell>
+  )
+}
