@@ -287,7 +287,7 @@ async def get_image(rid: int, session: AsyncSession = Depends(get_session)):
     if not path or not path.exists():
         raise HTTPException(404, "Фото нет")
     media = "image/heic" if path.suffix.lower() in {".heic", ".heif"} else None
-    return FileResponse(path, media_type=media, headers={"Cache-Control": "private, max-age=86400"})
+    return FileResponse(path, media_type=media, headers={"Cache-Control": "private, no-cache"})  # revalidate (ETag): an id can be reused
 
 
 @router.patch("/receipts/{rid}", response_model=ReceiptDetail)

@@ -11,7 +11,7 @@ from app.config import get_settings
 from app.db.models import Category
 from app.receipts.service import ReceiptService
 from app.web import create_app
-from tests.conftest import LIDL, FakeLLM, receipt_image
+from tests.conftest import LIDL, FakeLLM, lidl_on, receipt_image
 
 
 @pytest.fixture
@@ -38,7 +38,7 @@ async def test_receipt_flow(client, session):
     assert patched["items"][1]["category_id"] == sweets
 
     # the choice is remembered for the next receipt
-    res2 = await ReceiptService(session, FakeLLM(LIDL)).process_photo(receipt_image(), None)
+    res2 = await ReceiptService(session, FakeLLM(lidl_on(16))).process_photo(receipt_image(), None)
     assert res2.receipt.items[1].category_id == sweets
 
     summary = (await client.get("/api/stats/summary")).json()

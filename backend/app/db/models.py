@@ -57,7 +57,11 @@ class Category(Base):
 class Receipt(Base):
     __tablename__ = "receipts"
     # a reply in the chat is matched to a record by (chat, message)
-    __table_args__ = (Index("ix_receipts_chat_message", "chat_id", "message_id"),)
+    __table_args__ = (
+        Index("ix_receipts_chat_message", "chat_id", "message_id"),
+        # ids are never reused: buttons in old chat messages and cached pictures carry the id
+        {"sqlite_autoincrement": True},
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), index=True)

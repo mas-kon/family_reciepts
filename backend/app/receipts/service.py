@@ -5,7 +5,7 @@ import logging
 import re
 import uuid
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from PIL import Image, ImageOps
@@ -26,6 +26,9 @@ from app.receipts.qr import FiscalQR, find_fiscal_qr, parse_fiscal_qr
 from app.receipts.text import CategoryMatcher, csv_list, normalize_name
 
 log = logging.getLogger(__name__)
+
+DUPLICATE_MINUTES = 30  # the same total and shop within this time is the same purchase
+DUPLICATE_NEAR_MINUTES = 10  # the same total this close in time is the same purchase whatever the shop is called
 register_heif_opener()
 
 
@@ -385,9 +388,38 @@ class ReceiptService:
                     if receipt.review_reason:
                         receipt.review_reason += f"\n(перечитано моделью {res2.model})"
 
+        if not keep_if_not_receipt and (dup := await self.find_duplicate(receipt)):
+            await self.delete_receipt(receipt)
+            return ProcessResult(duplicate_of=dup)
         await self.session.commit()
         self.after_items_changed(receipt)
         return ProcessResult(receipt=receipt)
+
+    async def find_duplicate(self, receipt: Receipt) -> Receipt | None:
+        """The same purchase recorded before from another picture of it: a photo and a screenshot
+        from the shop's app (no QR code) are different files with the same total and time.
+        Same total within DUPLICATE_MINUTES, and the same shop, or nearly the same minute."""
+        if receipt.total is None or receipt.purchased_at is None or receipt.kind != Kind.EXPENSE:
+            return None
+        at, window = receipt.purchased_at, timedelta(minutes=DUPLICATE_MINUTES)
+        candidates = await self.session.scalars(
+            select(Receipt)
+            .where(
+                Receipt.id != receipt.id,
+                Receipt.kind == Kind.EXPENSE,
+                Receipt.source.in_(("photo", "email")),
+                Receipt.status != "failed",
+                Receipt.total.between(receipt.total - 0.01, receipt.total + 0.01),
+                Receipt.purchased_at.between(at - window, at + window),
+            )
+            .order_by(Receipt.id)
+        )
+        shop = normalize_name(receipt.store or "")
+        for r in candidates:
+            close = abs(r.purchased_at - at) <= timedelta(minutes=DUPLICATE_NEAR_MINUTES)
+            if close or not shop or not r.store or normalize_name(r.store) == shop:
+                return r
+        return None
 
     def after_items_changed(self, receipt: Receipt) -> None:
         """Groups new product names in the background, so the bot answers without waiting."""

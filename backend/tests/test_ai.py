@@ -13,7 +13,7 @@ from app.clock import now_local
 from app.config import get_settings
 from app.db.models import Category, Item, ProductAlias, Receipt, User
 from app.receipts.service import ReceiptService, add_months
-from tests.conftest import LIDL, FakeLLM, receipt_image
+from tests.conftest import LIDL, FakeLLM, lidl_on, receipt_image
 
 
 async def cat_id(session, name):
@@ -156,7 +156,7 @@ async def test_mail_owner_by_address(session):
     assert (await session.get(User, r.user_id)).name == "Анна" and r.external_id == "email:<m1>"
     # any of the person's addresses
     mail = ParsedMail(message_id="<m2>", sender="anna.work@company.bg", subject="Заказ", text="Кафе 4.20")
-    r = (await process_mail(ReceiptService(session, FakeLLM(LIDL)), mail))[0].receipt
+    r = (await process_mail(ReceiptService(session, FakeLLM(lidl_on(16))), mail))[0].receipt
     assert (await session.get(User, r.user_id)).name == "Анна"
 
 
@@ -334,7 +334,7 @@ async def test_product_grouping_merge_and_split(client, session):
     from app import products
 
     llm = FakeLLM(
-        [LIDL, {**LIDL, "items": [{**LIDL["items"][0], "name_original": "МЛЯКО ПРЯСНО 3% 1Л"}]}],
+        [LIDL, {**lidl_on(16), "items": [{**LIDL["items"][0], "name_original": "МЛЯКО ПРЯСНО 3% 1Л"}]}],
         products={"прясно мляко 3% 1л": "Молоко 3% 1 л", "мляко прясно 3% 1л": "Молоко 3% 1 л"},
     )
     svc = ReceiptService(session, llm, auto_products=False)

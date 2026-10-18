@@ -225,3 +225,26 @@ async def test_api_rejects_unknown_references_instead_of_500(client):
     rec = await client.post("/api/receipts/manual", json={"amount": 5})
     rid = rec.json()["id"]
     assert (await client.patch(f"/api/receipts/{rid}", json={"status": "bogus"})).status_code == 422
+
+
+async def test_deleted_record_id_is_not_reused_and_image_is_revalidated(session, client):
+    svc = ReceiptService(session, FakeLLM(LIDL))
+    first = (await svc.process_photo(receipt_image(), None)).receipt
+    first_id = first.id
+    img = await client.get(f"/api/receipts/{first_id}/image")
+    assert "no-cache" in img.headers["cache-control"] and img.headers.get("etag")
+    await svc.delete_receipt(first)
+    second = (await ReceiptService(session, FakeLLM(LIDL)).process_photo(receipt_image(), None)).receipt
+    assert second.id != first_id  # old chat buttons and cached pictures must not point at the new record
+
+
+async def test_same_purchase_from_a_screenshot_without_qr_is_a_duplicate(session):
+    svc = ReceiptService(session, FakeLLM([LIDL, {**LIDL, "purchased_at": "2026-01-15T14:28"}]))
+    first = await svc.process_photo(receipt_image("DT123456*0012345*2026-01-15*14:30:25*23.40"), None)
+    again = await svc.process_photo(receipt_image(), None)  # the shop app's picture: no QR code
+    assert again.duplicate_of.id == first.receipt.id
+    assert await session.scalar(select(func.count(Receipt.id))) == 1
+
+    other = {**LIDL, "purchased_at": "2026-01-15T18:00"}  # same total hours later: a different purchase
+    third = await ReceiptService(session, FakeLLM(other)).process_photo(receipt_image(), None)
+    assert third.receipt is not None and await session.scalar(select(func.count(Receipt.id))) == 2

@@ -137,6 +137,11 @@ class FakeLLM:
         return SimpleNamespace(content="", tool_calls=[call]), "fake/model"
 
 
+def lidl_on(day: int) -> dict:
+    """The same receipt on another day: two identical receipts at one time are one purchase."""
+    return {**LIDL, "purchased_at": f"2026-01-{day:02d}T14:30"}
+
+
 def receipt_image(qr_text: str | None = None) -> bytes:
     import zxingcpp
 
