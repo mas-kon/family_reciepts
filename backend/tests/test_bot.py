@@ -12,6 +12,7 @@ from sqlalchemy import func, select
 
 from app.bot import handlers
 from app.db.models import Receipt
+from app.receipts.service import ReceiptService
 from tests.conftest import LIDL, FakeLLM, receipt_image
 
 CHAT = Chat(id=-100, type="group", title="Семья")
@@ -336,3 +337,31 @@ async def test_other_chats_are_ignored_but_chatid_works(session, fake_llm, dp, m
     monkeypatch.setattr(get_settings(), "allowed_chat_ids", str(CHAT.id))
     await dp.feed_update(bot, text_update(62, "+ 3"))
     assert await session.scalar(select(func.count(Receipt.id))) == 1
+
+
+async def test_probable_duplicate_is_kept_and_the_person_is_asked(session, fake_llm, dp):
+    # the second picture's time was misread (09 hours later), so it is not an exact repeat
+    fake_llm.receipt = [LIDL, {**LIDL, "purchased_at": "2026-01-15T23:30"}]
+    fs = FakeSession(receipt_image())
+    bot = Bot("42:TEST", session=fs, default=DefaultBotProperties(parse_mode="HTML"))
+    await dp.feed_update(bot, photo_update(70))
+    await dp.feed_update(bot, photo_update(71))
+    assert "Не дубль ли это" in fs.texts()[-1]
+    assert await session.scalar(select(func.count(Receipt.id))) == 2
+    new_id = (await session.scalars(select(Receipt.id).order_by(Receipt.id.desc()))).first()
+
+    chat = {"id": CHAT.id, "type": "group", "title": "Семья"}
+    user = {"id": 7, "is_bot": False, "first_name": "Анна"}
+    cb = Update.model_validate({"update_id": 72, "callback_query": {
+        "id": "c72", "from": user, "chat_instance": "ci", "data": f"dupdel:{new_id}",
+        "message": {"message_id": 1002, "date": int(dt.datetime.now().timestamp()), "chat": chat, "text": "x"},
+    }})
+    await dp.feed_update(bot, cb)
+    assert "Дубль удалён" in fs.texts()[-1]
+    assert await session.scalar(select(func.count(Receipt.id))) == 1
+
+
+async def test_receipt_dated_in_the_future_needs_review(session):
+    svc = ReceiptService(session, FakeLLM({**LIDL, "purchased_at": "2999-01-01T10:00"}))
+    r = (await svc.process_photo(receipt_image(), None)).receipt
+    assert r.status == "needs_review" and "в будущем" in r.review_reason

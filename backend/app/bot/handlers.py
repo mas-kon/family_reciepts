@@ -397,6 +397,11 @@ async def _handle_image(message: Message, bot: Bot, file_id: str, ext: str, data
                 )
                 return
             text = await format_receipt(session, res.receipt, sender.id if sender else None)
+            if d := res.maybe_duplicate_of:
+                when = f" от {d.purchased_at:%d.%m.%Y %H:%M}" if d.purchased_at else ""
+                text += f"\n\n❓ <b>Не дубль ли это?</b> Такой же чек из того же магазина уже записан{when} (№{d.id})."
+                await _edit(status, text, duplicate_keyboard(res.receipt.id, d.id))
+                return
             await _edit(status, text, receipt_keyboard(res.receipt.id))
             await _send_alerts(bot, message.chat.id, await new_budget_alerts(session, res.receipt))
     except Exception:
@@ -515,6 +520,43 @@ async def on_reply_edit(message: Message, bot: Bot):
                     return
                 log.warning("could not update bot message: %s", e)
         await message.reply(new_text, reply_markup=receipt_keyboard(r.id))
+
+
+def duplicate_keyboard(new_id: int, old_id: int) -> InlineKeyboardMarkup:
+    rows = [
+        [
+            InlineKeyboardButton(text="🗑 Да, дубль — удалить", callback_data=f"dupdel:{new_id}"),
+            InlineKeyboardButton(text="Нет, это другой чек", callback_data=f"dupkeep:{new_id}"),
+        ]
+    ]
+    if base := get_settings().web_base_url:
+        rows.append([InlineKeyboardButton(text="🔎 Открыть записанный", url=f"{base}/receipts/{old_id}")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+@router.callback_query(F.data.startswith("dupdel:"))
+async def on_duplicate_delete(cb: CallbackQuery):
+    if not cb.message:
+        return await cb.answer()
+    async with session_factory()() as session:
+        r = await session.get(Receipt, int(cb.data.split(":")[1]))
+        if r:
+            await ReceiptService(session).delete_receipt(r)
+    await cb.message.edit_text("🗑 Дубль удалён.")
+    await cb.answer("Удалено")
+
+
+@router.callback_query(F.data.startswith("dupkeep:"))
+async def on_duplicate_keep(cb: CallbackQuery, bot: Bot):
+    if not cb.message:
+        return await cb.answer()
+    rid = int(cb.data.split(":")[1])
+    await cb.message.edit_reply_markup(reply_markup=receipt_keyboard(rid))
+    await cb.answer("Оставил")
+    async with session_factory()() as session:
+        r = await session.get(Receipt, rid)
+        if r:
+            await _send_alerts(bot, cb.message.chat.id, await new_budget_alerts(session, r))
 
 
 @router.callback_query(F.data.startswith("del:"))

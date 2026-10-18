@@ -14,7 +14,7 @@ The interface, the bot's replies and the default categories are in Russian. Rece
 
 - **Receipt photo**, or the image as a file, including HEIC from an iPhone. Discounts and bottle deposits are kept as separate lines.
 - **Electronic receipts**: a PDF receipt, a screenshot of an online order or delivery, or an e-mail with a receipt sent to a dedicated mailbox.
-- **Bulgarian fiscal QR code** gives the exact date and total, prevents booking the same receipt twice and helps straighten a photo taken sideways. A picture without a QR code (for example a screenshot from a shop app) is recognised as a repeat too: the same total within 30 minutes and the same shop, or the same total within 10 minutes under any name.
+- **Bulgarian fiscal QR code** gives the exact date and total, prevents booking the same receipt twice and helps straighten a photo taken sideways. A picture without a QR code (for example a screenshot from a shop app) is recognised as a repeat too: the same total within 30 minutes and the same shop, or the same total within 10 minutes under any name. If the time was misread, a receipt of the same shop with the same total and number of lines within 2 days is kept, and the bot asks "Is this a duplicate?" with buttons to delete it or keep it. A receipt dated in the future is marked "Check".
 - **Total check.** If the lines do not add up to the total or to the QR amount, the receipt is marked "Check" («Проверить») with an explanation.
 - **Expense as text**: `+ taxi 12`, `/add coffee 3.50`. An amount alone, `+ 12`, is booked under "No category" («Без категории»).
 - **Expense by voice message**: "twelve euros taxi".

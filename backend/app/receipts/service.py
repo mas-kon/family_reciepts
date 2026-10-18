@@ -28,6 +28,7 @@ from app.receipts.text import CategoryMatcher, csv_list, normalize_name
 log = logging.getLogger(__name__)
 
 DUPLICATE_MINUTES = 30  # the same total and shop within this time is the same purchase
+PROBABLE_DUPLICATE_DAYS = 2  # the same shop, total and lines this close: ask whether it is a repeat
 DUPLICATE_NEAR_MINUTES = 10  # the same total this close in time is the same purchase whatever the shop is called
 register_heif_opener()
 
@@ -36,6 +37,8 @@ register_heif_opener()
 class ProcessResult:
     receipt: Receipt | None = None
     duplicate_of: Receipt | None = None
+    # saved, but looks like a record that is already there: the person is asked
+    maybe_duplicate_of: Receipt | None = None
     not_receipt: bool = False
     error: str | None = None
 
@@ -391,9 +394,34 @@ class ReceiptService:
         if not keep_if_not_receipt and (dup := await self.find_duplicate(receipt)):
             await self.delete_receipt(receipt)
             return ProcessResult(duplicate_of=dup)
+        maybe = None if keep_if_not_receipt else await self.find_probable_duplicate(receipt)
         await self.session.commit()
         self.after_items_changed(receipt)
-        return ProcessResult(receipt=receipt)
+        return ProcessResult(receipt=receipt, maybe_duplicate_of=maybe)
+
+    async def find_probable_duplicate(self, receipt: Receipt) -> Receipt | None:
+        """Not sure enough to drop it: the same shop, total and number of lines within a couple of
+        days (the time on a picture is often misread). The person decides."""
+        if receipt.total is None or receipt.purchased_at is None or not receipt.store or not receipt.items:
+            return None
+        at, window = receipt.purchased_at, timedelta(days=PROBABLE_DUPLICATE_DAYS)
+        shop = normalize_name(receipt.store)
+        candidates = await self.session.scalars(
+            select(Receipt)
+            .where(
+                Receipt.id != receipt.id,
+                Receipt.kind == Kind.EXPENSE,
+                Receipt.source.in_(("photo", "email")),
+                Receipt.status != "failed",
+                Receipt.total.between(receipt.total - 0.01, receipt.total + 0.01),
+                Receipt.purchased_at.between(at - window, at + window),
+            )
+            .order_by(Receipt.id)
+        )
+        for r in candidates:
+            if normalize_name(r.store or "") == shop and len(r.items) == len(receipt.items):
+                return r
+        return None
 
     async def find_duplicate(self, receipt: Receipt) -> Receipt | None:
         """The same purchase recorded before from another picture of it: a photo and a screenshot
@@ -445,6 +473,8 @@ class ReceiptService:
         receipt.purchased_at = (
             (qr.purchased_at if qr else None) or parsed.purchased_at or receipt.purchased_at or now_local()
         )
+        if receipt.purchased_at > now_local() + timedelta(minutes=10):
+            reasons.append(f"Дата чека в будущем ({receipt.purchased_at:%d.%m.%Y %H:%M}), проверьте дату и время")
         total = parsed.total
         if qr:
             if total is not None and abs(total - qr.amount) > tol:
