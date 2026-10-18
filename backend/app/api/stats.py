@@ -31,8 +31,11 @@ async def stats_monthly(
     session: AsyncSession = Depends(get_session),
     months: int = Query(12, ge=1, le=60),
     user_id: int | None = None,
+    # a chosen period replaces "the last N months"
+    date_from: date | None = None,
+    date_to: date | None = None,
 ):
-    return await monthly(session, months, user_id)
+    return await monthly(session, months, user_id, date_from, date_to)
 
 
 @router.get("/products")

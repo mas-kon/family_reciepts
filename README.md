@@ -124,7 +124,7 @@ The container restarts by itself after a crash and after the machine reboots.
 2. Set `IMAP_HOST`, `IMAP_USER` and `IMAP_PASSWORD` in `.env`, then run `docker compose restart`.
 3. In the web app, under Settings → Family («Настройки → Семья»), enter every address of each person, for example a personal and a work one. Type each address and press Enter. A receipt forwarded from any of them is booked for that person. Mail from an unknown address is processed too, but without an owner.
 
-The bot checks the mailbox every `IMAP_POLL_MINUTES` minutes and posts about each receipt in the group. A message is marked as read only after it has been processed, so a failure does not lose it; every attachment of a message is read as a separate receipt.
+The bot checks the mailbox every `IMAP_POLL_MINUTES` minutes and posts about each receipt in the group. A message is marked as read only after it has been processed, so a failure does not lose it; every attachment of a message is read as a separate receipt. Whether the mailbox is connected, when it was last checked and the login error, if any, are shown in the web app under Settings → Report and mail («Настройки → Отчёт и почта»), with a "Check the connection" button.
 
 ### Run without Docker
 

@@ -261,3 +261,17 @@ export interface LLMUsage {
   by_model: (UsageRow & { model: string; provider: string | null })[]
   by_day: (UsageRow & { day: string })[]
 }
+
+export interface MailStatus {
+  enabled: boolean
+  address: string | null
+  host: string | null
+  poll_minutes: number
+  checked_at: string | null
+  /** null: not checked since the start */
+  ok: boolean | null
+  error: string | null
+  hint: string | null
+  /** receipts booked from mail since the start */
+  received: number
+}

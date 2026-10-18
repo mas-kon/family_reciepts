@@ -8,7 +8,7 @@ New names are grouped by the LLM in the background; people can merge and rename 
 import asyncio
 import logging
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Item, ProductAlias, Receipt
@@ -44,6 +44,19 @@ async def ungrouped_names(session: AsyncSession, names: list[str] | None = None)
     return [n for n in await session.scalars(q) if n]
 
 
+async def prune_orphan_aliases(session: AsyncSession) -> int:
+    """Deleting a receipt leaves its automatic aliases behind; their product names would then be
+    offered to the LLM as "known products" and attached to unrelated lines. Manual ones stay."""
+    res = await session.execute(
+        delete(ProductAlias).where(
+            ProductAlias.manual.is_(False),
+            ProductAlias.name_normalized.not_in(select(Item.name_normalized).distinct()),
+        )
+    )
+    await session.commit()
+    return res.rowcount or 0
+
+
 async def known_products(session: AsyncSession) -> list[str]:
     rows = await session.scalars(
         select(ProductAlias.product)
@@ -57,6 +70,7 @@ async def known_products(session: AsyncSession) -> list[str]:
 async def group_names(session: AsyncSession, llm, names: list[str] | None = None) -> int:
     """Asks the LLM to group ungrouped names (all of them, or only `names`). Returns how many
     names got a product."""
+    await prune_orphan_aliases(session)
     todo = await ungrouped_names(session, names)
     done = 0
     for i in range(0, len(todo), BATCH):

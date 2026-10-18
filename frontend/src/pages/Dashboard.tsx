@@ -41,14 +41,16 @@ export default function Dashboard() {
   const [f, setF] = useState<PeriodState>({ period: 'month', custom: ['', ''], userId: null })
   const range = periodRange(f.period, f.custom)
   const params = { ...range, user_id: f.userId }
+  // the monthly chart follows a longer or a chosen period; for one month it keeps the last 12
+  const monthlyRange = ['3m', 'year', 'custom'].includes(f.period) && range.date_from ? range : {}
 
   const summary = useQuery({
     queryKey: ['summary', params],
     queryFn: () => api<Summary>(`/stats/summary${qs(params)}`),
   })
   const monthly = useQuery({
-    queryKey: ['monthly', f.userId],
-    queryFn: () => api<MonthRow[]>(`/stats/monthly${qs({ months: 12, user_id: f.userId })}`),
+    queryKey: ['monthly', f.userId, monthlyRange],
+    queryFn: () => api<MonthRow[]>(`/stats/monthly${qs({ months: 12, user_id: f.userId, ...monthlyRange })}`),
   })
   const budgets = useQuery({
     queryKey: ['budgets'],

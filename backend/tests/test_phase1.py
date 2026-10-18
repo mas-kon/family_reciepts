@@ -248,3 +248,13 @@ async def test_same_purchase_from_a_screenshot_without_qr_is_a_duplicate(session
     other = {**LIDL, "purchased_at": "2026-01-15T18:00"}  # same total hours later: a different purchase
     third = await ReceiptService(session, FakeLLM(other)).process_photo(receipt_image(), None)
     assert third.receipt is not None and await session.scalar(select(func.count(Receipt.id))) == 2
+
+
+async def test_monthly_follows_a_chosen_period(session, client):
+    svc = ReceiptService(session, FakeLLM())
+    for month in (3, 4, 5, 6):
+        await svc.book_single(name="Хлеб", amount=10, category_id=None, user_id=None, source="manual",
+                              purchased_at=dt.datetime(2026, month, 10, 12))
+    rows = (await client.get("/api/stats/monthly?date_from=2026-04-15&date_to=2026-05-20")).json()
+    assert [r["month"] for r in rows] == ["2026-04", "2026-05"]
+    assert [r["total"] for r in rows] == [10, 10]

@@ -549,3 +549,44 @@ async def test_low_balance_warns_once(monkeypatch):
     assert await usage.check_balance(bot) == []
     state["balance"] = 0.2  # topped up and spent again: warns again
     assert len(await usage.check_balance(bot)) == 1 and len(bot.sent) == 2
+
+
+async def test_aliases_of_deleted_lines_are_not_offered_as_known_products(session):
+    from app import products
+
+    await ReceiptService(session, FakeLLM(LIDL), auto_products=False).process_photo(receipt_image(), None)
+    session.add_all([
+        ProductAlias(name_normalized="прясно мляко 3% 1л", product="Молоко 3% 1 л"),
+        ProductAlias(name_normalized="deleted long ago", product="anet 4 eood"),
+        ProductAlias(name_normalized="deleted by hand", product="Мой товар", manual=True),
+    ])
+    await session.commit()
+    assert await products.prune_orphan_aliases(session) == 1
+    assert set(await products.known_products(session)) == {"Молоко 3% 1 л", "Мой товар"}
+
+
+async def test_mail_status_shows_login_errors(client, monkeypatch):
+    import imaplib
+
+    from app import email_inbox
+
+    s = get_settings()
+    assert (await client.get("/api/mail/status")).json()["enabled"] is False
+
+    monkeypatch.setattr(s, "imap_host", "imap.example.com")
+    monkeypatch.setattr(s, "imap_user", "checks@example.com")
+
+    def refuse(*a, **kw):
+        raise imaplib.IMAP4.error("[AUTHENTICATIONFAILED] Invalid credentials")
+
+    monkeypatch.setattr(email_inbox, "fetch_unseen", refuse)
+    await email_inbox.poll_inbox(None)
+    st = (await client.get("/api/mail/status")).json()
+    assert st["enabled"] and st["ok"] is False and "Invalid credentials" in st["error"] and st["hint"]
+    assert "password" not in str(st).lower() or "IMAP_PASSWORD" in st["hint"]
+
+    monkeypatch.setattr(email_inbox, "fetch_unseen", list)
+    await email_inbox.poll_inbox(None)
+    st = (await client.get("/api/mail/status")).json()
+    assert st["ok"] is True and st["error"] is None and st["checked_at"]
+

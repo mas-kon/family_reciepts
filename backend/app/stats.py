@@ -225,14 +225,28 @@ async def income_summary(
     return {"total": round(sum(c["amount"] for c in cats), 2), "by_category": cats}
 
 
-async def monthly(session: AsyncSession, months: int = 12, user_id: int | None = None) -> list[dict]:
-    """Totals per month per top-level category for the last N months."""
+async def monthly(
+    session: AsyncSession,
+    months: int = 12,
+    user_id: int | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+) -> list[dict]:
+    """Totals per month per top-level category: the last N months, or the months of a chosen
+    period (date_from..date_to, at most 60 months)."""
     Parent = aliased(Category)
     today = now_local().date()
-    y, m = today.year, today.month - (months - 1)
-    while m <= 0:
-        m += 12
-        y -= 1
+    end = None  # exclusive upper bound, only for a chosen period
+    if date_from:
+        last = date_to or today
+        y, m = date_from.year, date_from.month
+        months = max(1, min((last.year - y) * 12 + last.month - m + 1, 60))
+        end = datetime(y + (m - 1 + months) // 12, (m - 1 + months) % 12 + 1, 1)
+    else:
+        y, m = today.year, today.month - (months - 1)
+        while m <= 0:
+            m += 12
+            y -= 1
     start = datetime(y, m, 1)
     # strftime is SQLite-specific; for PostgreSQL use func.to_char(..., "YYYY-MM")
     month_expr = func.strftime("%Y-%m", Receipt.purchased_at)
@@ -248,7 +262,7 @@ async def monthly(session: AsyncSession, months: int = 12, user_id: int | None =
             .outerjoin(Category, Item.category_id == Category.id)
             .outerjoin(Parent, Category.parent_id == Parent.id),
             start,
-            None,
+            end,
             user_id,
         ).group_by(month_expr, func.coalesce(Parent.name, Category.name, "Без категории"))
     )
@@ -256,7 +270,7 @@ async def monthly(session: AsyncSession, months: int = 12, user_id: int | None =
         _filtered(
             select(month_expr.label("month"), func.sum(Receipt.total).label("amount")),
             start,
-            None,
+            end,
             user_id,
             kind=Kind.INCOME,
         ).group_by(month_expr)

@@ -12,18 +12,45 @@ import imaplib
 import logging
 import re
 from dataclasses import dataclass, field
+from datetime import datetime
 from email.header import decode_header, make_header
 from email.message import Message
 from email.utils import parseaddr
 from html.parser import HTMLParser
 
 from app.bot.ui import format_receipt, receipt_keyboard
+from app.clock import now_local
 from app.config import get_settings
 from app.db.session import session_factory
 from app.family import owner_by_email
 from app.receipts.service import ProcessResult, ReceiptService
 
 log = logging.getLogger(__name__)
+
+@dataclass
+class MailStatus:
+    """The result of the last look into the mailbox, for the web app. Kept in memory."""
+
+    checked_at: datetime | None = None
+    ok: bool | None = None  # None: not checked yet
+    error: str | None = None
+    received: int = 0  # receipts booked since the start
+
+
+status = MailStatus()
+
+
+def _describe(e: Exception) -> str:
+    text = str(e).strip() or type(e).__name__
+    if isinstance(e, imaplib.IMAP4.error | OSError) or "AUTH" in text.upper():
+        return text
+    return f"{type(e).__name__}: {text}"
+
+
+def check_connection() -> None:
+    """Logs in and opens the folder; raises when the mailbox cannot be read."""
+    _imap(lambda box: box.noop())
+
 
 MAX_ATTEMPTS = 3
 _failures: dict[str, int] = {}  # Message-ID -> failed attempts
@@ -163,7 +190,9 @@ async def poll_inbox(bot=None) -> int:
         raws = await asyncio.to_thread(fetch_unseen)
     except Exception as e:
         log.warning("IMAP poll failed: %s", e)
+        status.checked_at, status.ok, status.error = now_local(), False, _describe(e)
         return 0
+    status.checked_at, status.ok, status.error = now_local(), True, None
     booked = 0
     done: list[bytes] = []
     for num, raw in raws:
@@ -183,6 +212,7 @@ async def poll_inbox(bot=None) -> int:
                 if not res.receipt:
                     continue
                 booked += 1
+                status.received += 1
                 chat = s.notify_chat_id
                 if bot and chat:
                     text = "📧 Чек из почты\n" + await format_receipt(session, res.receipt)

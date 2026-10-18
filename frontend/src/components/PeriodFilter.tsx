@@ -1,4 +1,5 @@
 import { Group, Select, SegmentedControl, TextInput } from '@mantine/core'
+import dayjs from 'dayjs'
 import type { PeriodKey } from '../format'
 import { useUsers } from '../hooks'
 
@@ -14,7 +15,15 @@ export function PeriodFilter({ value, onChange }: { value: PeriodState; onChange
     <Group gap="sm" wrap="wrap" align="flex-end">
       <SegmentedControl
         value={value.period}
-        onChange={(v) => onChange({ ...value, period: v as PeriodKey })}
+        onChange={(v) => {
+          const period = v as PeriodKey
+          // "Период" starts from this month instead of from empty fields (empty meant "everything")
+          const custom: [string, string] =
+            period === 'custom' && !value.custom[0] && !value.custom[1]
+              ? [dayjs().startOf('month').format('YYYY-MM-DD'), dayjs().format('YYYY-MM-DD')]
+              : value.custom
+          onChange({ ...value, period, custom })
+        }}
         data={[
           { value: 'month', label: 'Этот месяц' },
           { value: 'prev', label: 'Прошлый' },
