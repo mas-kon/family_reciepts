@@ -4,6 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import current_viewer
+from app.api.schemas import Ok
 from app.clock import now_local
 from app.db.models import Budget, Category
 from app.db.session import get_session
@@ -17,13 +18,27 @@ class BudgetIn(BaseModel):
     amount: float = Field(gt=0)
 
 
-@router.get("/budgets")
+class BudgetRow(BaseModel):
+    id: int
+    category_id: int
+    category: str
+    amount: float
+    spent: float
+    percent: float
+
+
+class BudgetsOut(BaseModel):
+    month: str
+    items: list[BudgetRow]
+
+
+@router.get("/budgets", response_model=BudgetsOut)
 async def budgets(month: str | None = None, session: AsyncSession = Depends(get_session)):
     month = month or f"{now_local():%Y-%m}"
     return {"month": month, "items": await budgets_status(session, month)}
 
 
-@router.put("/budgets")
+@router.put("/budgets", response_model=Ok)
 async def put_budget(data: BudgetIn, session: AsyncSession = Depends(get_session)):
     if not await session.get(Category, data.category_id):
         raise HTTPException(404, "Категория не найдена")
@@ -33,13 +48,13 @@ async def put_budget(data: BudgetIn, session: AsyncSession = Depends(get_session
     else:
         session.add(Budget(category_id=data.category_id, amount=data.amount))
     await session.commit()
-    return {"ok": True}
+    return Ok()
 
 
-@router.delete("/budgets/{bid}")
+@router.delete("/budgets/{bid}", response_model=Ok)
 async def delete_budget(bid: int, session: AsyncSession = Depends(get_session)):
     b = await session.get(Budget, bid)
     if b:
         await session.delete(b)
         await session.commit()
-    return {"ok": True}
+    return Ok()

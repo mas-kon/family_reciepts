@@ -1,11 +1,13 @@
-from datetime import date
+from datetime import date, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import current_viewer
 from app.api.receipts import end_of, start_of
+from app.api.schemas import Ok
 from app.config import get_settings
 from app.db.models import Item, ProductAlias, Receipt
 from app.db.session import get_session, icontains
@@ -16,7 +18,80 @@ from app.stats import PRODUCT_KEY, monthly, summary
 router = APIRouter(prefix="/api", tags=["stats"], dependencies=[Depends(current_viewer)])
 
 
-@router.get("/stats/summary")
+class CategoryAmount(BaseModel):
+    id: int | None
+    name: str | None
+    amount: float
+
+
+class SubcategoryAmount(CategoryAmount):
+    parent: str | None
+
+
+class StoreAmount(BaseModel):
+    store: str
+    amount: float
+    receipts: int
+
+
+class TopItem(BaseModel):
+    name_normalized: str
+    name_ru: str | None
+    amount: float
+    count: int
+
+
+class NamedAmount(BaseModel):
+    name: str
+    amount: float
+
+
+class IncomeSummary(BaseModel):
+    total: float
+    by_category: list[NamedAmount]
+
+
+class SummaryOut(BaseModel):
+    total: float
+    receipts: int
+    by_category: list[CategoryAmount]
+    by_subcategory: list[SubcategoryAmount]
+    by_user: list[CategoryAmount]
+    by_store: list[StoreAmount]
+    top_items: list[TopItem]
+    income: IncomeSummary
+    # money moved inside the family: neither spent nor earned
+    transfers_total: float
+
+
+class MonthRow(BaseModel):
+    month: str
+    total: float
+    income: float
+    categories: dict[str, float]
+
+
+class ProductOut(BaseModel):
+    key: str
+    name: str | None
+    name_original: str
+    variants: int
+    count: int
+    min_price: float | None
+    max_price: float | None
+    last_date: datetime | None
+
+
+class PricePoint(BaseModel):
+    receipt_id: int
+    purchased_at: datetime | None
+    store: str | None
+    name_original: str
+    qty: float
+    unit_price_eur: float | None
+
+
+@router.get("/stats/summary", response_model=SummaryOut)
 async def stats_summary(
     session: AsyncSession = Depends(get_session),
     date_from: date | None = None,
@@ -26,7 +101,7 @@ async def stats_summary(
     return await summary(session, start_of(date_from), end_of(date_to), user_id)
 
 
-@router.get("/stats/monthly")
+@router.get("/stats/monthly", response_model=list[MonthRow])
 async def stats_monthly(
     session: AsyncSession = Depends(get_session),
     months: int = Query(12, ge=1, le=60),
@@ -38,7 +113,7 @@ async def stats_monthly(
     return await monthly(session, months, user_id, date_from, date_to)
 
 
-@router.get("/products")
+@router.get("/products", response_model=list[ProductOut])
 async def products(
     session: AsyncSession = Depends(get_session),
     q: str | None = None,
@@ -77,7 +152,7 @@ async def products(
     ]
 
 
-@router.get("/products/prices")
+@router.get("/products/prices", response_model=list[PricePoint])
 async def product_prices(key: str, session: AsyncSession = Depends(get_session)):
     rows = await session.execute(
         with_alias(
@@ -96,10 +171,10 @@ async def product_prices(key: str, session: AsyncSession = Depends(get_session))
     return [{**r._mapping, "unit_price_eur": round(r.unit_price_eur, 2) if r.unit_price_eur else None} for r in rows]
 
 
-@router.post("/reports/send")
+@router.post("/reports/send", response_model=Ok)
 async def send_report(request: Request, month: str | None = Query(None, pattern=r"^\d{4}-(0[1-9]|1[0-2])$")):
     bot = getattr(request.app.state, "bot", None)
     if not bot or not get_settings().notify_chat_id:
         raise HTTPException(400, "Бот не запущен или не задан чат для отчётов")
     await send_monthly_report(bot, month)
-    return {"ok": True}
+    return Ok()

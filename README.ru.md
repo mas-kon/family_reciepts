@@ -255,6 +255,8 @@ cd frontend && npm run dev
 cd backend && uv run pytest
 # новая миграция после изменения моделей
 cd backend && uv run alembic revision --autogenerate -m "описание"
+# после изменения ответа API: пересоздать типы веб-приложения (frontend/src/api-schema.ts)
+cd frontend && npm run gen:api
 ```
 
 Документация API: `/api/docs`.
@@ -263,7 +265,10 @@ cd backend && uv run alembic revision --autogenerate -m "описание"
 
 | Модуль | Что делает |
 |---|---|
-| `app/receipts/service.py` | распознавание чеков, каскад, PDF, электронные чеки, траты текстом |
+| `app/receipts/service.py` | `ReceiptService`, собранный из частей ниже |
+| `app/receipts/recognition.py` | распознавание чеков: фото, PDF, почта, каскад моделей, дубликаты |
+| `app/receipts/records.py` | записи без картинки (текст, голос, регулярные, банк) и их правки |
+| `app/receipts/base.py`, `parsing.py`, `images.py` | основа сервиса, разбор набранного текста, работа с картинками и PDF |
 | `app/bank.py` | банковские уведомления, выписки, типы операций и переводы внутри семьи |
 | `app/voice.py` | голосовые сообщения |
 | `app/products.py` | склейка товаров |
@@ -273,7 +278,9 @@ cd backend && uv run alembic revision --autogenerate -m "описание"
 | `app/reports.py` | месячный отчёт и комментарий |
 | `app/llm/` | клиент, промпты и схемы ответов нейросети |
 | `app/llm/usage.py` | учёт запросов, балансы провайдеров, предупреждение о низком балансе |
-| `app/bot/handlers.py` | бот (перед каждым обработчиком проверяется, что чат семейный) |
+| `app/bot/handlers.py` | корневой роутер бота: проверка, что чат семейный, затем группы обработчиков по порядку |
+| `app/bot/start.py`, `photos.py`, `statements.py`, `records.py`, `audio.py`, `banking.py` | группы обработчиков: справка, фото и PDF чеков, выписки, записи текстом и правки, голос, банковские сообщения |
+| `app/bot/access.py`, `common.py` | проверка чата, общие помощники обработчиков |
 | `app/bot/ui.py` | сообщения и кнопки бота, их же используют задачи по расписанию и почта |
 | `app/family.py` | поиск члена семьи по имени, карте, почте или имени в банке |
 | `app/clock.py` | местное время (`now_local`) |

@@ -12,7 +12,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Item, ProductAlias, Receipt
-from app.db.session import session_factory
+from app.db.session import rowcount, session_factory
 from app.llm.client import LLMError
 from app.stats import PRODUCT_KEY
 
@@ -54,7 +54,7 @@ async def prune_orphan_aliases(session: AsyncSession) -> int:
         )
     )
     await session.commit()
-    return res.rowcount or 0
+    return rowcount(res)
 
 
 async def known_products(session: AsyncSession) -> list[str]:

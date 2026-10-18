@@ -4,6 +4,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import current_viewer
+from app.api.schemas import Ok
 from app.db.models import Receipt, User
 from app.db.session import get_session
 from app.family import apply_family_names
@@ -11,16 +12,31 @@ from app.family import apply_family_names
 router = APIRouter(prefix="/api", tags=["users"], dependencies=[Depends(current_viewer)])
 
 
-def user_out(u: User) -> dict:
-    return {
-        "id": u.id,
-        "name": u.name,
-        "username": u.username,
-        "has_telegram": u.telegram_id is not None,
-        "cards": u.cards or "",
-        "emails": u.emails or "",
-        "bank_names": u.bank_names or "",
-    }
+class UserOut(BaseModel):
+    id: int
+    name: str
+    username: str | None
+    has_telegram: bool
+    cards: str
+    emails: str
+    # how the bank writes this person in transfers, comma-separated
+    bank_names: str
+
+
+class UserSaved(UserOut):
+    marked_transfers: int
+
+
+def user_out(u: User) -> UserOut:
+    return UserOut(
+        id=u.id,
+        name=u.name,
+        username=u.username,
+        has_telegram=u.telegram_id is not None,
+        cards=u.cards or "",
+        emails=u.emails or "",
+        bank_names=u.bank_names or "",
+    )
 
 
 def _clean_list(value: str | None, digits: bool) -> str | None:
@@ -58,13 +74,13 @@ class UserPatch(BaseModel):
     bank_names: str | None = None
 
 
-@router.get("/users")
+@router.get("/users", response_model=list[UserOut])
 async def users(session: AsyncSession = Depends(get_session)):
     rows = await session.scalars(select(User).order_by(User.name))
     return [user_out(u) for u in rows]
 
 
-@router.post("/users")
+@router.post("/users", response_model=UserOut)
 async def create_user(data: UserIn, session: AsyncSession = Depends(get_session)):
     """Family member without Telegram, e.g. a child: expenses can be booked for them."""
     u = User(name=data.name.strip())
@@ -73,7 +89,7 @@ async def create_user(data: UserIn, session: AsyncSession = Depends(get_session)
     return user_out(u)
 
 
-@router.patch("/users/{uid}")
+@router.patch("/users/{uid}", response_model=UserSaved)
 async def update_user(uid: int, data: UserPatch, session: AsyncSession = Depends(get_session)):
     u = await session.get(User, uid)
     if not u:
@@ -88,21 +104,20 @@ async def update_user(uid: int, data: UserPatch, session: AsyncSession = Depends
     marked = 0
     if "bank_names" in fields:
         u.bank_names = _clean_names(fields["bank_names"])
-        await session.commit()
         # transfers to this person recorded before become inside-the-family too
         marked = await apply_family_names(session)
     await session.commit()
-    return {**user_out(u), "marked_transfers": marked}
+    return UserSaved(**user_out(u).model_dump(), marked_transfers=marked)
 
 
-@router.delete("/users/{uid}")
+@router.delete("/users/{uid}", response_model=Ok)
 async def delete_user(uid: int, session: AsyncSession = Depends(get_session)):
     u = await session.get(User, uid)
     if not u:
-        return {"ok": True}
+        return Ok()
     used = await session.scalar(select(func.count(Receipt.id)).where(Receipt.user_id == uid))
     if used:
         raise HTTPException(409, f"На этого человека записано трат: {used}. Сначала перенесите их.")
     await session.delete(u)
     await session.commit()
-    return {"ok": True}
+    return Ok()

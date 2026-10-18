@@ -21,6 +21,7 @@ from app.db.models import (
     Receipt,
     User,
 )
+from app.db.session import rowcount
 
 EUR = Item.total
 # product key: canonical product if grouped (app.products), otherwise the line's own name
@@ -45,7 +46,7 @@ def _filtered(
     date_from: datetime | None,
     date_to: datetime | None,
     user_id: int | None = None,
-    kind: Kind = Kind.EXPENSE,
+    kind: str = Kind.EXPENSE,
 ) -> Select:
     conds = [Receipt.status != "failed", Receipt.kind == kind]
     if date_from:
@@ -366,7 +367,7 @@ async def new_budget_alerts(session: AsyncSession, receipt: Receipt) -> list[str
                 res = await session.execute(
                     sqlite_insert(BudgetAlert).values(budget_id=b.id, month=month, level=lvl).on_conflict_do_nothing()
                 )
-                if lvl == level and not res.rowcount:
+                if lvl == level and not rowcount(res):
                     claimed = False
         if not claimed:
             continue

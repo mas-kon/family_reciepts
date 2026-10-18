@@ -26,3 +26,15 @@ def test_migrations_downgrade_to_base(tmp_path):
     cfg.set_main_option("sqlalchemy.url", url)
     command.upgrade(cfg, "head")
     command.downgrade(cfg, "base")
+
+
+def test_generated_api_types_are_current():
+    """frontend/openapi.json (the source of the web app's types) matches the API in the code.
+    After changing a response: `npm run gen:api` in frontend/."""
+    import json
+    from pathlib import Path
+
+    from app.web import create_app
+
+    saved = json.loads((Path(__file__).resolve().parents[2] / "frontend" / "openapi.json").read_text())
+    assert saved == json.loads(json.dumps(create_app().openapi())), "run `npm run gen:api` in frontend/"

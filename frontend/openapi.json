@@ -1,0 +1,5500 @@
+{
+ "openapi": "3.1.0",
+ "info": {
+  "title": "Check Bot",
+  "version": "0.1.0"
+ },
+ "paths": {
+  "/api/auth/config": {
+   "get": {
+    "tags": [
+     "auth"
+    ],
+    "summary": "Auth Config",
+    "operationId": "auth_config_api_auth_config_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/auth/telegram": {
+   "post": {
+    "tags": [
+     "auth"
+    ],
+    "summary": "Login Telegram",
+    "operationId": "login_telegram_api_auth_telegram_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/TelegramAuth"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/auth/telegram/callback": {
+   "get": {
+    "tags": [
+     "auth"
+    ],
+    "summary": "Login Telegram Redirect",
+    "description": "Target of the widget's data-auth-url: Telegram redirects here with the signed fields.",
+    "operationId": "login_telegram_redirect_api_auth_telegram_callback_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/auth/password": {
+   "post": {
+    "tags": [
+     "auth"
+    ],
+    "summary": "Login Password",
+    "operationId": "login_password_api_auth_password_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/PasswordAuth"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/auth/logout": {
+   "post": {
+    "tags": [
+     "auth"
+    ],
+    "summary": "Logout",
+    "operationId": "logout_api_auth_logout_post",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/auth/me": {
+   "get": {
+    "tags": [
+     "auth"
+    ],
+    "summary": "Me",
+    "operationId": "me_api_auth_me_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/receipts": {
+   "get": {
+    "tags": [
+     "receipts"
+    ],
+    "summary": "List Receipts",
+    "operationId": "list_receipts_api_receipts_get",
+    "parameters": [
+     {
+      "name": "user_id",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "integer"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "User Id"
+      }
+     },
+     {
+      "name": "date_from",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string",
+         "format": "date"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Date From"
+      }
+     },
+     {
+      "name": "date_to",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string",
+         "format": "date"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Date To"
+      }
+     },
+     {
+      "name": "store",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Store"
+      }
+     },
+     {
+      "name": "status",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Status"
+      }
+     },
+     {
+      "name": "source",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Source"
+      }
+     },
+     {
+      "name": "category_id",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Category Id"
+      }
+     },
+     {
+      "name": "import_id",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Import Id"
+      }
+     },
+     {
+      "name": "kind",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Kind"
+      }
+     },
+     {
+      "name": "q",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Q"
+      }
+     },
+     {
+      "name": "page",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "minimum": 1,
+       "default": 1,
+       "title": "Page"
+      }
+     },
+     {
+      "name": "page_size",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "maximum": 500,
+       "minimum": 1,
+       "default": 50,
+       "title": "Page Size"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ReceiptPage"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/receipts/{rid}": {
+   "get": {
+    "tags": [
+     "receipts"
+    ],
+    "summary": "Get Receipt",
+    "operationId": "get_receipt_api_receipts__rid__get",
+    "parameters": [
+     {
+      "name": "rid",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Rid"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ReceiptDetail"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   },
+   "patch": {
+    "tags": [
+     "receipts"
+    ],
+    "summary": "Patch Receipt",
+    "operationId": "patch_receipt_api_receipts__rid__patch",
+    "parameters": [
+     {
+      "name": "rid",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Rid"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ReceiptPatch"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ReceiptDetail"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   },
+   "delete": {
+    "tags": [
+     "receipts"
+    ],
+    "summary": "Delete Receipt",
+    "operationId": "delete_receipt_api_receipts__rid__delete",
+    "parameters": [
+     {
+      "name": "rid",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Rid"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Ok"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/receipts/{rid}/image": {
+   "get": {
+    "tags": [
+     "receipts"
+    ],
+    "summary": "Get Image",
+    "operationId": "get_image_api_receipts__rid__image_get",
+    "parameters": [
+     {
+      "name": "rid",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Rid"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/receipts/{rid}/reprocess": {
+   "post": {
+    "tags": [
+     "receipts"
+    ],
+    "summary": "Reprocess",
+    "operationId": "reprocess_api_receipts__rid__reprocess_post",
+    "parameters": [
+     {
+      "name": "rid",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Rid"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ReprocessIn"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ReceiptDetail"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/receipts/manual": {
+   "post": {
+    "tags": [
+     "receipts"
+    ],
+    "summary": "Add Manual",
+    "operationId": "add_manual_api_receipts_manual_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ManualIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ReceiptDetail"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/receipts/{rid}/items": {
+   "post": {
+    "tags": [
+     "receipts"
+    ],
+    "summary": "Add Item",
+    "operationId": "add_item_api_receipts__rid__items_post",
+    "parameters": [
+     {
+      "name": "rid",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Rid"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ItemIn"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ReceiptDetail"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/items/{item_id}": {
+   "patch": {
+    "tags": [
+     "receipts"
+    ],
+    "summary": "Patch Item",
+    "operationId": "patch_item_api_items__item_id__patch",
+    "parameters": [
+     {
+      "name": "item_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Item Id"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ItemPatch"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ReceiptDetail"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   },
+   "delete": {
+    "tags": [
+     "receipts"
+    ],
+    "summary": "Delete Item",
+    "operationId": "delete_item_api_items__item_id__delete",
+    "parameters": [
+     {
+      "name": "item_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Item Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ReceiptDetail"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/export.csv": {
+   "get": {
+    "tags": [
+     "receipts"
+    ],
+    "summary": "Export Csv",
+    "operationId": "export_csv_api_export_csv_get",
+    "parameters": [
+     {
+      "name": "date_from",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string",
+         "format": "date"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Date From"
+      }
+     },
+     {
+      "name": "date_to",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string",
+         "format": "date"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Date To"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/stats/summary": {
+   "get": {
+    "tags": [
+     "stats"
+    ],
+    "summary": "Stats Summary",
+    "operationId": "stats_summary_api_stats_summary_get",
+    "parameters": [
+     {
+      "name": "date_from",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string",
+         "format": "date"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Date From"
+      }
+     },
+     {
+      "name": "date_to",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string",
+         "format": "date"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Date To"
+      }
+     },
+     {
+      "name": "user_id",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "integer"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "User Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/SummaryOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/stats/monthly": {
+   "get": {
+    "tags": [
+     "stats"
+    ],
+    "summary": "Stats Monthly",
+    "operationId": "stats_monthly_api_stats_monthly_get",
+    "parameters": [
+     {
+      "name": "months",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "maximum": 60,
+       "minimum": 1,
+       "default": 12,
+       "title": "Months"
+      }
+     },
+     {
+      "name": "user_id",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "integer"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "User Id"
+      }
+     },
+     {
+      "name": "date_from",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string",
+         "format": "date"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Date From"
+      }
+     },
+     {
+      "name": "date_to",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string",
+         "format": "date"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Date To"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "$ref": "#/components/schemas/MonthRow"
+         },
+         "title": "Response Stats Monthly Api Stats Monthly Get"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/products": {
+   "get": {
+    "tags": [
+     "stats"
+    ],
+    "summary": "Products",
+    "description": "Products for price tracking. Lines grouped under one product (Цены → Объединить or the\nautomatic grouping) count as one product; `key` identifies it in the other endpoints.",
+    "operationId": "products_api_products_get",
+    "parameters": [
+     {
+      "name": "q",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Q"
+      }
+     },
+     {
+      "name": "limit",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "maximum": 1000,
+       "minimum": 1,
+       "default": 200,
+       "title": "Limit"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "$ref": "#/components/schemas/ProductOut"
+         },
+         "title": "Response Products Api Products Get"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/products/prices": {
+   "get": {
+    "tags": [
+     "stats"
+    ],
+    "summary": "Product Prices",
+    "operationId": "product_prices_api_products_prices_get",
+    "parameters": [
+     {
+      "name": "key",
+      "in": "query",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Key"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "$ref": "#/components/schemas/PricePoint"
+         },
+         "title": "Response Product Prices Api Products Prices Get"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/reports/send": {
+   "post": {
+    "tags": [
+     "stats"
+    ],
+    "summary": "Send Report",
+    "operationId": "send_report_api_reports_send_post",
+    "parameters": [
+     {
+      "name": "month",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string",
+         "pattern": "^\\d{4}-(0[1-9]|1[0-2])$"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Month"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Ok"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/ask": {
+   "post": {
+    "tags": [
+     "ai"
+    ],
+    "summary": "Ask",
+    "operationId": "ask_api_ask_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/AskIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/AskOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/bank/statement": {
+   "post": {
+    "tags": [
+     "ai"
+    ],
+    "summary": "Bank Statement",
+    "description": "Reads a statement and shows which expenses are not recorded yet. Nothing is saved.",
+    "operationId": "bank_statement_api_bank_statement_post",
+    "requestBody": {
+     "content": {
+      "multipart/form-data": {
+       "schema": {
+        "$ref": "#/components/schemas/Body_bank_statement_api_bank_statement_post"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/StatementOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/bank/import": {
+   "post": {
+    "tags": [
+     "ai"
+    ],
+    "summary": "Bank Import",
+    "operationId": "bank_import_api_bank_import_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/StatementImport"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ImportOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/bank/imports": {
+   "get": {
+    "tags": [
+     "ai"
+    ],
+    "summary": "Bank Imports",
+    "description": "Statements imported so far (from the web or the bot), newest first.",
+    "operationId": "bank_imports_api_bank_imports_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/ImportInfo"
+         },
+         "type": "array",
+         "title": "Response Bank Imports Api Bank Imports Get"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/bank/imports/{import_id}": {
+   "delete": {
+    "tags": [
+     "ai"
+    ],
+    "summary": "Bank Import Delete",
+    "operationId": "bank_import_delete_api_bank_imports__import_id__delete",
+    "parameters": [
+     {
+      "name": "import_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Import Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Deleted"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/products/merge": {
+   "post": {
+    "tags": [
+     "ai"
+    ],
+    "summary": "Products Merge",
+    "operationId": "products_merge_api_products_merge_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/MergeIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Lines"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/products/split": {
+   "post": {
+    "tags": [
+     "ai"
+    ],
+    "summary": "Products Split",
+    "operationId": "products_split_api_products_split_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/SplitIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Lines"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/products/group": {
+   "post": {
+    "tags": [
+     "ai"
+    ],
+    "summary": "Products Group",
+    "description": "Groups every not yet grouped product name with the LLM. Takes minutes for a long backlog,\nso it runs in the background; the lists show the result as it arrives.",
+    "operationId": "products_group_api_products_group_post",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Queued"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/warranties": {
+   "get": {
+    "tags": [
+     "ai"
+    ],
+    "summary": "Warranties",
+    "operationId": "warranties_api_warranties_get",
+    "parameters": [
+     {
+      "name": "expired",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "boolean",
+       "default": false,
+       "title": "Expired"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "$ref": "#/components/schemas/WarrantyOut"
+         },
+         "title": "Response Warranties Api Warranties Get"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/users": {
+   "get": {
+    "tags": [
+     "users"
+    ],
+    "summary": "Users",
+    "operationId": "users_api_users_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/UserOut"
+         },
+         "type": "array",
+         "title": "Response Users Api Users Get"
+        }
+       }
+      }
+     }
+    }
+   },
+   "post": {
+    "tags": [
+     "users"
+    ],
+    "summary": "Create User",
+    "description": "Family member without Telegram, e.g. a child: expenses can be booked for them.",
+    "operationId": "create_user_api_users_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/UserIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/UserOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/users/{uid}": {
+   "patch": {
+    "tags": [
+     "users"
+    ],
+    "summary": "Update User",
+    "operationId": "update_user_api_users__uid__patch",
+    "parameters": [
+     {
+      "name": "uid",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Uid"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/UserPatch"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/UserSaved"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   },
+   "delete": {
+    "tags": [
+     "users"
+    ],
+    "summary": "Delete User",
+    "operationId": "delete_user_api_users__uid__delete",
+    "parameters": [
+     {
+      "name": "uid",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Uid"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Ok"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/categories": {
+   "get": {
+    "tags": [
+     "categories"
+    ],
+    "summary": "Categories",
+    "operationId": "categories_api_categories_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/CategoryOut"
+         },
+         "type": "array",
+         "title": "Response Categories Api Categories Get"
+        }
+       }
+      }
+     }
+    }
+   },
+   "post": {
+    "tags": [
+     "categories"
+    ],
+    "summary": "Create Category",
+    "operationId": "create_category_api_categories_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/CategoryIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/CategoryOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/categories/{cid}": {
+   "patch": {
+    "tags": [
+     "categories"
+    ],
+    "summary": "Patch Category",
+    "operationId": "patch_category_api_categories__cid__patch",
+    "parameters": [
+     {
+      "name": "cid",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Cid"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/CategoryPatch"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/CategoryOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   },
+   "delete": {
+    "tags": [
+     "categories"
+    ],
+    "summary": "Delete Category",
+    "operationId": "delete_category_api_categories__cid__delete",
+    "parameters": [
+     {
+      "name": "cid",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Cid"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Ok"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/budgets": {
+   "get": {
+    "tags": [
+     "budgets"
+    ],
+    "summary": "Budgets",
+    "operationId": "budgets_api_budgets_get",
+    "parameters": [
+     {
+      "name": "month",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Month"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/BudgetsOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   },
+   "put": {
+    "tags": [
+     "budgets"
+    ],
+    "summary": "Put Budget",
+    "operationId": "put_budget_api_budgets_put",
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/BudgetIn"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Ok"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/budgets/{bid}": {
+   "delete": {
+    "tags": [
+     "budgets"
+    ],
+    "summary": "Delete Budget",
+    "operationId": "delete_budget_api_budgets__bid__delete",
+    "parameters": [
+     {
+      "name": "bid",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Bid"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Ok"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/recurring": {
+   "get": {
+    "tags": [
+     "recurring"
+    ],
+    "summary": "List Recurring",
+    "operationId": "list_recurring_api_recurring_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/RecurringOut"
+         },
+         "type": "array",
+         "title": "Response List Recurring Api Recurring Get"
+        }
+       }
+      }
+     }
+    }
+   },
+   "post": {
+    "tags": [
+     "recurring"
+    ],
+    "summary": "Create Recurring",
+    "operationId": "create_recurring_api_recurring_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/RecurringIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/RecurringOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/recurring/{rid}": {
+   "put": {
+    "tags": [
+     "recurring"
+    ],
+    "summary": "Update Recurring",
+    "operationId": "update_recurring_api_recurring__rid__put",
+    "parameters": [
+     {
+      "name": "rid",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Rid"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/RecurringIn"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/RecurringOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   },
+   "delete": {
+    "tags": [
+     "recurring"
+    ],
+    "summary": "Delete Recurring",
+    "operationId": "delete_recurring_api_recurring__rid__delete",
+    "parameters": [
+     {
+      "name": "rid",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Rid"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Ok"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/recurring/run": {
+   "post": {
+    "tags": [
+     "recurring"
+    ],
+    "summary": "Run Recurring",
+    "operationId": "run_recurring_api_recurring_run_post",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/RecurringRun"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/llm/balance": {
+   "get": {
+    "tags": [
+     "llm"
+    ],
+    "summary": "Llm Balance",
+    "operationId": "llm_balance_api_llm_balance_get",
+    "parameters": [
+     {
+      "name": "fresh",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "boolean",
+       "default": false,
+       "title": "Fresh"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/BalanceOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/llm/usage": {
+   "get": {
+    "tags": [
+     "llm"
+    ],
+    "summary": "Llm Usage",
+    "operationId": "llm_usage_api_llm_usage_get",
+    "parameters": [
+     {
+      "name": "days",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "maximum": 366,
+       "minimum": 1,
+       "default": 30,
+       "title": "Days"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/UsageOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/meta": {
+   "get": {
+    "tags": [
+     "llm"
+    ],
+    "summary": "Meta",
+    "operationId": "meta_api_meta_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/MetaOut"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/mail/status": {
+   "get": {
+    "tags": [
+     "mail"
+    ],
+    "summary": "Mail Status",
+    "description": "Whether the mailbox is connected and what the last look into it found.",
+    "operationId": "mail_status_api_mail_status_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/MailStatus"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/mail/check": {
+   "post": {
+    "tags": [
+     "mail"
+    ],
+    "summary": "Mail Check",
+    "description": "Tries to log in right now instead of waiting for the next poll.",
+    "operationId": "mail_check_api_mail_check_post",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/MailStatus"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/health": {
+   "get": {
+    "summary": "Health",
+    "description": "Database reachable and, when the bot is configured, its polling task alive.",
+    "operationId": "health_api_health_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    }
+   }
+  }
+ },
+ "components": {
+  "schemas": {
+   "AskIn": {
+    "properties": {
+     "question": {
+      "type": "string",
+      "maxLength": 2000,
+      "minLength": 1,
+      "title": "Question"
+     },
+     "history": {
+      "items": {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      "type": "array",
+      "title": "History"
+     }
+    },
+    "type": "object",
+    "required": [
+     "question"
+    ],
+    "title": "AskIn"
+   },
+   "AskOut": {
+    "properties": {
+     "answer": {
+      "type": "string",
+      "title": "Answer"
+     },
+     "model": {
+      "type": "string",
+      "title": "Model"
+     },
+     "tools": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Tools"
+     }
+    },
+    "type": "object",
+    "required": [
+     "answer",
+     "model",
+     "tools"
+    ],
+    "title": "AskOut"
+   },
+   "BalanceOut": {
+    "properties": {
+     "alert_below": {
+      "type": "number",
+      "title": "Alert Below"
+     },
+     "providers": {
+      "items": {
+       "$ref": "#/components/schemas/ProviderBalance"
+      },
+      "type": "array",
+      "title": "Providers"
+     }
+    },
+    "type": "object",
+    "required": [
+     "alert_below",
+     "providers"
+    ],
+    "title": "BalanceOut"
+   },
+   "Body_bank_statement_api_bank_statement_post": {
+    "properties": {
+     "file": {
+      "type": "string",
+      "contentMediaType": "application/octet-stream",
+      "title": "File"
+     }
+    },
+    "type": "object",
+    "required": [
+     "file"
+    ],
+    "title": "Body_bank_statement_api_bank_statement_post"
+   },
+   "BudgetIn": {
+    "properties": {
+     "category_id": {
+      "type": "integer",
+      "title": "Category Id"
+     },
+     "amount": {
+      "type": "number",
+      "exclusiveMinimum": 0.0,
+      "title": "Amount"
+     }
+    },
+    "type": "object",
+    "required": [
+     "category_id",
+     "amount"
+    ],
+    "title": "BudgetIn"
+   },
+   "BudgetRow": {
+    "properties": {
+     "id": {
+      "type": "integer",
+      "title": "Id"
+     },
+     "category_id": {
+      "type": "integer",
+      "title": "Category Id"
+     },
+     "category": {
+      "type": "string",
+      "title": "Category"
+     },
+     "amount": {
+      "type": "number",
+      "title": "Amount"
+     },
+     "spent": {
+      "type": "number",
+      "title": "Spent"
+     },
+     "percent": {
+      "type": "number",
+      "title": "Percent"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "category_id",
+     "category",
+     "amount",
+     "spent",
+     "percent"
+    ],
+    "title": "BudgetRow"
+   },
+   "BudgetsOut": {
+    "properties": {
+     "month": {
+      "type": "string",
+      "title": "Month"
+     },
+     "items": {
+      "items": {
+       "$ref": "#/components/schemas/BudgetRow"
+      },
+      "type": "array",
+      "title": "Items"
+     }
+    },
+    "type": "object",
+    "required": [
+     "month",
+     "items"
+    ],
+    "title": "BudgetsOut"
+   },
+   "CategoryAmount": {
+    "properties": {
+     "id": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Id"
+     },
+     "name": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Name"
+     },
+     "amount": {
+      "type": "number",
+      "title": "Amount"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "name",
+     "amount"
+    ],
+    "title": "CategoryAmount"
+   },
+   "CategoryIn": {
+    "properties": {
+     "name": {
+      "type": "string",
+      "maxLength": 100,
+      "minLength": 1,
+      "title": "Name"
+     },
+     "parent_id": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Parent Id"
+     },
+     "kind": {
+      "type": "string",
+      "pattern": "^(expense|income)$",
+      "title": "Kind",
+      "default": "expense"
+     }
+    },
+    "type": "object",
+    "required": [
+     "name"
+    ],
+    "title": "CategoryIn"
+   },
+   "CategoryOut": {
+    "properties": {
+     "id": {
+      "type": "integer",
+      "title": "Id"
+     },
+     "name": {
+      "type": "string",
+      "title": "Name"
+     },
+     "parent_id": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Parent Id"
+     },
+     "sort_order": {
+      "type": "integer",
+      "title": "Sort Order"
+     },
+     "kind": {
+      "type": "string",
+      "enum": [
+       "expense",
+       "income"
+      ],
+      "title": "Kind"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "name",
+     "parent_id",
+     "sort_order",
+     "kind"
+    ],
+    "title": "CategoryOut"
+   },
+   "CategoryPatch": {
+    "properties": {
+     "name": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 100,
+        "minLength": 1
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Name"
+     },
+     "sort_order": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Sort Order"
+     }
+    },
+    "type": "object",
+    "title": "CategoryPatch"
+   },
+   "DayUsage": {
+    "properties": {
+     "calls": {
+      "type": "integer",
+      "title": "Calls"
+     },
+     "failed": {
+      "type": "integer",
+      "title": "Failed"
+     },
+     "cost": {
+      "type": "number",
+      "title": "Cost"
+     },
+     "byok_cost": {
+      "type": "number",
+      "title": "Byok Cost"
+     },
+     "byok_calls": {
+      "type": "integer",
+      "title": "Byok Calls"
+     },
+     "day": {
+      "type": "string",
+      "title": "Day"
+     }
+    },
+    "type": "object",
+    "required": [
+     "calls",
+     "failed",
+     "cost",
+     "byok_cost",
+     "byok_calls",
+     "day"
+    ],
+    "title": "DayUsage"
+   },
+   "Deleted": {
+    "properties": {
+     "deleted": {
+      "type": "integer",
+      "title": "Deleted"
+     }
+    },
+    "type": "object",
+    "required": [
+     "deleted"
+    ],
+    "title": "Deleted"
+   },
+   "HTTPValidationError": {
+    "properties": {
+     "detail": {
+      "items": {
+       "$ref": "#/components/schemas/ValidationError"
+      },
+      "type": "array",
+      "title": "Detail"
+     }
+    },
+    "type": "object",
+    "title": "HTTPValidationError"
+   },
+   "ImportInfo": {
+    "properties": {
+     "import_id": {
+      "type": "string",
+      "title": "Import Id"
+     },
+     "created_at": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Created At"
+     },
+     "count": {
+      "type": "integer",
+      "title": "Count"
+     },
+     "total": {
+      "type": "number",
+      "title": "Total"
+     },
+     "date_from": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Date From"
+     },
+     "date_to": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Date To"
+     },
+     "from_bot": {
+      "type": "boolean",
+      "title": "From Bot"
+     }
+    },
+    "type": "object",
+    "required": [
+     "import_id",
+     "created_at",
+     "count",
+     "total",
+     "date_from",
+     "date_to",
+     "from_bot"
+    ],
+    "title": "ImportInfo"
+   },
+   "ImportOut": {
+    "properties": {
+     "booked": {
+      "type": "integer",
+      "title": "Booked"
+     },
+     "skipped": {
+      "type": "integer",
+      "title": "Skipped"
+     },
+     "import_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Import Id"
+     },
+     "marked_transfers": {
+      "type": "integer",
+      "title": "Marked Transfers"
+     }
+    },
+    "type": "object",
+    "required": [
+     "booked",
+     "skipped",
+     "import_id",
+     "marked_transfers"
+    ],
+    "title": "ImportOut"
+   },
+   "IncomeSummary": {
+    "properties": {
+     "total": {
+      "type": "number",
+      "title": "Total"
+     },
+     "by_category": {
+      "items": {
+       "$ref": "#/components/schemas/NamedAmount"
+      },
+      "type": "array",
+      "title": "By Category"
+     }
+    },
+    "type": "object",
+    "required": [
+     "total",
+     "by_category"
+    ],
+    "title": "IncomeSummary"
+   },
+   "ItemIn": {
+    "properties": {
+     "name_original": {
+      "type": "string",
+      "title": "Name Original"
+     },
+     "name_ru": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Name Ru"
+     },
+     "qty": {
+      "type": "number",
+      "title": "Qty",
+      "default": 1
+     },
+     "unit_price": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Unit Price"
+     },
+     "total": {
+      "type": "number",
+      "title": "Total"
+     },
+     "category_id": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Category Id"
+     }
+    },
+    "type": "object",
+    "required": [
+     "name_original",
+     "total"
+    ],
+    "title": "ItemIn"
+   },
+   "ItemOut": {
+    "properties": {
+     "id": {
+      "type": "integer",
+      "title": "Id"
+     },
+     "position": {
+      "type": "integer",
+      "title": "Position"
+     },
+     "name_original": {
+      "type": "string",
+      "title": "Name Original"
+     },
+     "name_ru": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Name Ru"
+     },
+     "name_normalized": {
+      "type": "string",
+      "title": "Name Normalized"
+     },
+     "qty": {
+      "type": "number",
+      "title": "Qty"
+     },
+     "unit_price": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Unit Price"
+     },
+     "total": {
+      "type": "number",
+      "title": "Total"
+     },
+     "category_id": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Category Id"
+     },
+     "warranty_until": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Warranty Until"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "position",
+     "name_original",
+     "name_ru",
+     "name_normalized",
+     "qty",
+     "unit_price",
+     "total",
+     "category_id",
+     "warranty_until"
+    ],
+    "title": "ItemOut"
+   },
+   "ItemPatch": {
+    "properties": {
+     "name_original": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Name Original"
+     },
+     "name_ru": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Name Ru"
+     },
+     "qty": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Qty"
+     },
+     "unit_price": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Unit Price"
+     },
+     "total": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Total"
+     },
+     "category_id": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Category Id"
+     },
+     "warranty_until": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Warranty Until"
+     },
+     "remember": {
+      "type": "boolean",
+      "title": "Remember",
+      "default": true
+     }
+    },
+    "type": "object",
+    "title": "ItemPatch"
+   },
+   "KeyLimits": {
+    "properties": {
+     "limit": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Limit"
+     },
+     "limit_remaining": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Limit Remaining"
+     },
+     "limit_reset": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Limit Reset"
+     },
+     "usage_daily": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Usage Daily"
+     },
+     "usage_monthly": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Usage Monthly"
+     },
+     "byok_usage_monthly": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Byok Usage Monthly"
+     },
+     "is_free_tier": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Is Free Tier"
+     },
+     "free_requests_remaining": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Free Requests Remaining"
+     }
+    },
+    "type": "object",
+    "required": [
+     "limit",
+     "limit_remaining",
+     "limit_reset",
+     "usage_daily",
+     "usage_monthly",
+     "byok_usage_monthly",
+     "is_free_tier",
+     "free_requests_remaining"
+    ],
+    "title": "KeyLimits"
+   },
+   "Kind": {
+    "type": "string",
+    "enum": [
+     "expense",
+     "income",
+     "transfer"
+    ],
+    "title": "Kind",
+    "description": "What a record is. Only EXPENSE counts as spending; TRANSFER is money moved inside the family."
+   },
+   "Lines": {
+    "properties": {
+     "lines": {
+      "type": "integer",
+      "title": "Lines"
+     }
+    },
+    "type": "object",
+    "required": [
+     "lines"
+    ],
+    "title": "Lines"
+   },
+   "MailStatus": {
+    "properties": {
+     "enabled": {
+      "type": "boolean",
+      "title": "Enabled"
+     },
+     "address": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Address"
+     },
+     "host": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Host"
+     },
+     "poll_minutes": {
+      "type": "integer",
+      "title": "Poll Minutes"
+     },
+     "checked_at": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Checked At"
+     },
+     "ok": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Ok"
+     },
+     "error": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Error"
+     },
+     "hint": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Hint"
+     },
+     "received": {
+      "type": "integer",
+      "title": "Received"
+     }
+    },
+    "type": "object",
+    "required": [
+     "enabled",
+     "address",
+     "host",
+     "poll_minutes",
+     "checked_at",
+     "ok",
+     "error",
+     "hint",
+     "received"
+    ],
+    "title": "MailStatus"
+   },
+   "ManualIn": {
+    "properties": {
+     "name": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Name"
+     },
+     "amount": {
+      "type": "number",
+      "title": "Amount"
+     },
+     "category_id": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Category Id"
+     },
+     "user_id": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "User Id"
+     },
+     "purchased_at": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Purchased At"
+     },
+     "store": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Store"
+     },
+     "kind": {
+      "type": "string",
+      "pattern": "^(expense|income)$",
+      "title": "Kind",
+      "default": "expense"
+     }
+    },
+    "type": "object",
+    "required": [
+     "amount"
+    ],
+    "title": "ManualIn"
+   },
+   "MergeIn": {
+    "properties": {
+     "keys": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "minItems": 1,
+      "title": "Keys"
+     },
+     "product": {
+      "type": "string",
+      "maxLength": 300,
+      "minLength": 1,
+      "title": "Product"
+     }
+    },
+    "type": "object",
+    "required": [
+     "keys",
+     "product"
+    ],
+    "title": "MergeIn"
+   },
+   "MetaOut": {
+    "properties": {
+     "models": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Models"
+     },
+     "llm_base_url": {
+      "type": "string",
+      "title": "Llm Base Url"
+     },
+     "text_models": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Text Models"
+     },
+     "strong_models": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Strong Models"
+     },
+     "audio_models": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Audio Models"
+     },
+     "ask_models": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Ask Models"
+     },
+     "email_enabled": {
+      "type": "boolean",
+      "title": "Email Enabled"
+     },
+     "email_address": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Email Address"
+     },
+     "warranty_remind_days": {
+      "type": "integer",
+      "title": "Warranty Remind Days"
+     }
+    },
+    "type": "object",
+    "required": [
+     "models",
+     "llm_base_url",
+     "text_models",
+     "strong_models",
+     "audio_models",
+     "ask_models",
+     "email_enabled",
+     "email_address",
+     "warranty_remind_days"
+    ],
+    "title": "MetaOut"
+   },
+   "ModelUsage": {
+    "properties": {
+     "calls": {
+      "type": "integer",
+      "title": "Calls"
+     },
+     "failed": {
+      "type": "integer",
+      "title": "Failed"
+     },
+     "cost": {
+      "type": "number",
+      "title": "Cost"
+     },
+     "byok_cost": {
+      "type": "number",
+      "title": "Byok Cost"
+     },
+     "byok_calls": {
+      "type": "integer",
+      "title": "Byok Calls"
+     },
+     "model": {
+      "type": "string",
+      "title": "Model"
+     },
+     "provider": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Provider"
+     }
+    },
+    "type": "object",
+    "required": [
+     "calls",
+     "failed",
+     "cost",
+     "byok_cost",
+     "byok_calls",
+     "model",
+     "provider"
+    ],
+    "title": "ModelUsage"
+   },
+   "MonthRow": {
+    "properties": {
+     "month": {
+      "type": "string",
+      "title": "Month"
+     },
+     "total": {
+      "type": "number",
+      "title": "Total"
+     },
+     "income": {
+      "type": "number",
+      "title": "Income"
+     },
+     "categories": {
+      "additionalProperties": {
+       "type": "number"
+      },
+      "type": "object",
+      "title": "Categories"
+     }
+    },
+    "type": "object",
+    "required": [
+     "month",
+     "total",
+     "income",
+     "categories"
+    ],
+    "title": "MonthRow"
+   },
+   "NamedAmount": {
+    "properties": {
+     "name": {
+      "type": "string",
+      "title": "Name"
+     },
+     "amount": {
+      "type": "number",
+      "title": "Amount"
+     }
+    },
+    "type": "object",
+    "required": [
+     "name",
+     "amount"
+    ],
+    "title": "NamedAmount"
+   },
+   "Ok": {
+    "properties": {
+     "ok": {
+      "type": "boolean",
+      "title": "Ok",
+      "default": true
+     }
+    },
+    "type": "object",
+    "title": "Ok"
+   },
+   "PasswordAuth": {
+    "properties": {
+     "password": {
+      "type": "string",
+      "title": "Password"
+     }
+    },
+    "type": "object",
+    "required": [
+     "password"
+    ],
+    "title": "PasswordAuth"
+   },
+   "PricePoint": {
+    "properties": {
+     "receipt_id": {
+      "type": "integer",
+      "title": "Receipt Id"
+     },
+     "purchased_at": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Purchased At"
+     },
+     "store": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Store"
+     },
+     "name_original": {
+      "type": "string",
+      "title": "Name Original"
+     },
+     "qty": {
+      "type": "number",
+      "title": "Qty"
+     },
+     "unit_price_eur": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Unit Price Eur"
+     }
+    },
+    "type": "object",
+    "required": [
+     "receipt_id",
+     "purchased_at",
+     "store",
+     "name_original",
+     "qty",
+     "unit_price_eur"
+    ],
+    "title": "PricePoint"
+   },
+   "ProductOut": {
+    "properties": {
+     "key": {
+      "type": "string",
+      "title": "Key"
+     },
+     "name": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Name"
+     },
+     "name_original": {
+      "type": "string",
+      "title": "Name Original"
+     },
+     "variants": {
+      "type": "integer",
+      "title": "Variants"
+     },
+     "count": {
+      "type": "integer",
+      "title": "Count"
+     },
+     "min_price": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Min Price"
+     },
+     "max_price": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Max Price"
+     },
+     "last_date": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Last Date"
+     }
+    },
+    "type": "object",
+    "required": [
+     "key",
+     "name",
+     "name_original",
+     "variants",
+     "count",
+     "min_price",
+     "max_price",
+     "last_date"
+    ],
+    "title": "ProductOut"
+   },
+   "ProviderBalance": {
+    "properties": {
+     "provider": {
+      "type": "string",
+      "title": "Provider"
+     },
+     "currency": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Currency"
+     },
+     "url": {
+      "type": "string",
+      "title": "Url"
+     },
+     "balance": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Balance"
+     },
+     "total_credits": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Total Credits"
+     },
+     "error": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Error"
+     },
+     "key": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/KeyLimits"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     }
+    },
+    "type": "object",
+    "required": [
+     "provider",
+     "url"
+    ],
+    "title": "ProviderBalance"
+   },
+   "Queued": {
+    "properties": {
+     "queued": {
+      "type": "integer",
+      "title": "Queued"
+     }
+    },
+    "type": "object",
+    "required": [
+     "queued"
+    ],
+    "title": "Queued"
+   },
+   "ReceiptBrief": {
+    "properties": {
+     "id": {
+      "type": "integer",
+      "title": "Id"
+     },
+     "title": {
+      "type": "string",
+      "title": "Title"
+     },
+     "purchased_at": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Purchased At"
+     },
+     "total": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Total"
+     },
+     "source": {
+      "type": "string",
+      "title": "Source"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "title",
+     "purchased_at",
+     "total",
+     "source"
+    ],
+    "title": "ReceiptBrief"
+   },
+   "ReceiptDetail": {
+    "properties": {
+     "id": {
+      "type": "integer",
+      "title": "Id"
+     },
+     "title": {
+      "type": "string",
+      "title": "Title"
+     },
+     "source": {
+      "type": "string",
+      "enum": [
+       "photo",
+       "manual",
+       "recurring",
+       "bank",
+       "voice",
+       "email"
+      ],
+      "title": "Source"
+     },
+     "store": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Store"
+     },
+     "purchased_at": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Purchased At"
+     },
+     "total": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Total"
+     },
+     "status": {
+      "type": "string",
+      "enum": [
+       "ok",
+       "needs_review",
+       "pending",
+       "failed"
+      ],
+      "title": "Status"
+     },
+     "review_reason": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Review Reason"
+     },
+     "user_id": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "User Id"
+     },
+     "user_name": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "User Name"
+     },
+     "items_count": {
+      "type": "integer",
+      "title": "Items Count"
+     },
+     "has_image": {
+      "type": "boolean",
+      "title": "Has Image"
+     },
+     "note": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Note"
+     },
+     "import_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Import Id"
+     },
+     "kind": {
+      "$ref": "#/components/schemas/Kind"
+     },
+     "counterparty": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Counterparty"
+     },
+     "peer_user_id": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Peer User Id"
+     },
+     "peer_name": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Peer Name"
+     },
+     "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Created At"
+     },
+     "items": {
+      "items": {
+       "$ref": "#/components/schemas/ItemOut"
+      },
+      "type": "array",
+      "title": "Items"
+     },
+     "llm_model": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Llm Model"
+     },
+     "qr_raw": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Qr Raw"
+     },
+     "items_sum": {
+      "type": "number",
+      "title": "Items Sum"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "title",
+     "source",
+     "store",
+     "purchased_at",
+     "total",
+     "status",
+     "review_reason",
+     "user_id",
+     "user_name",
+     "items_count",
+     "has_image",
+     "note",
+     "import_id",
+     "kind",
+     "counterparty",
+     "peer_user_id",
+     "peer_name",
+     "created_at",
+     "items",
+     "llm_model",
+     "qr_raw",
+     "items_sum"
+    ],
+    "title": "ReceiptDetail"
+   },
+   "ReceiptOut": {
+    "properties": {
+     "id": {
+      "type": "integer",
+      "title": "Id"
+     },
+     "title": {
+      "type": "string",
+      "title": "Title"
+     },
+     "source": {
+      "type": "string",
+      "enum": [
+       "photo",
+       "manual",
+       "recurring",
+       "bank",
+       "voice",
+       "email"
+      ],
+      "title": "Source"
+     },
+     "store": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Store"
+     },
+     "purchased_at": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Purchased At"
+     },
+     "total": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Total"
+     },
+     "status": {
+      "type": "string",
+      "enum": [
+       "ok",
+       "needs_review",
+       "pending",
+       "failed"
+      ],
+      "title": "Status"
+     },
+     "review_reason": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Review Reason"
+     },
+     "user_id": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "User Id"
+     },
+     "user_name": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "User Name"
+     },
+     "items_count": {
+      "type": "integer",
+      "title": "Items Count"
+     },
+     "has_image": {
+      "type": "boolean",
+      "title": "Has Image"
+     },
+     "note": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Note"
+     },
+     "import_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Import Id"
+     },
+     "kind": {
+      "$ref": "#/components/schemas/Kind"
+     },
+     "counterparty": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Counterparty"
+     },
+     "peer_user_id": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Peer User Id"
+     },
+     "peer_name": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Peer Name"
+     },
+     "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Created At"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "title",
+     "source",
+     "store",
+     "purchased_at",
+     "total",
+     "status",
+     "review_reason",
+     "user_id",
+     "user_name",
+     "items_count",
+     "has_image",
+     "note",
+     "import_id",
+     "kind",
+     "counterparty",
+     "peer_user_id",
+     "peer_name",
+     "created_at"
+    ],
+    "title": "ReceiptOut"
+   },
+   "ReceiptPage": {
+    "properties": {
+     "total": {
+      "type": "integer",
+      "title": "Total"
+     },
+     "items": {
+      "items": {
+       "$ref": "#/components/schemas/ReceiptOut"
+      },
+      "type": "array",
+      "title": "Items"
+     }
+    },
+    "type": "object",
+    "required": [
+     "total",
+     "items"
+    ],
+    "title": "ReceiptPage"
+   },
+   "ReceiptPatch": {
+    "properties": {
+     "store": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Store"
+     },
+     "purchased_at": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Purchased At"
+     },
+     "total": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Total"
+     },
+     "status": {
+      "anyOf": [
+       {
+        "type": "string",
+        "enum": [
+         "ok",
+         "needs_review",
+         "pending",
+         "failed"
+        ]
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Status"
+     },
+     "note": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Note"
+     },
+     "user_id": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "User Id"
+     },
+     "kind": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Kind"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "peer_user_id": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Peer User Id"
+     },
+     "remember_peer": {
+      "type": "boolean",
+      "title": "Remember Peer",
+      "default": false
+     }
+    },
+    "type": "object",
+    "title": "ReceiptPatch"
+   },
+   "RecurringIn": {
+    "properties": {
+     "name": {
+      "type": "string",
+      "maxLength": 200,
+      "minLength": 1,
+      "title": "Name"
+     },
+     "amount": {
+      "type": "number",
+      "exclusiveMinimum": 0.0,
+      "title": "Amount"
+     },
+     "category_id": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Category Id"
+     },
+     "user_id": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "User Id"
+     },
+     "day_of_month": {
+      "type": "integer",
+      "maximum": 31.0,
+      "minimum": 1.0,
+      "title": "Day Of Month",
+      "default": 1
+     },
+     "active": {
+      "type": "boolean",
+      "title": "Active",
+      "default": true
+     },
+     "kind": {
+      "type": "string",
+      "pattern": "^(expense|income)$",
+      "title": "Kind",
+      "default": "expense"
+     }
+    },
+    "type": "object",
+    "required": [
+     "name",
+     "amount"
+    ],
+    "title": "RecurringIn"
+   },
+   "RecurringOut": {
+    "properties": {
+     "id": {
+      "type": "integer",
+      "title": "Id"
+     },
+     "name": {
+      "type": "string",
+      "title": "Name"
+     },
+     "amount": {
+      "type": "number",
+      "title": "Amount"
+     },
+     "category_id": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Category Id"
+     },
+     "user_id": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "User Id"
+     },
+     "day_of_month": {
+      "type": "integer",
+      "title": "Day Of Month"
+     },
+     "active": {
+      "type": "boolean",
+      "title": "Active"
+     },
+     "last_booked_month": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Last Booked Month"
+     },
+     "kind": {
+      "type": "string",
+      "enum": [
+       "expense",
+       "income"
+      ],
+      "title": "Kind"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "name",
+     "amount",
+     "category_id",
+     "user_id",
+     "day_of_month",
+     "active",
+     "last_booked_month",
+     "kind"
+    ],
+    "title": "RecurringOut"
+   },
+   "RecurringRun": {
+    "properties": {
+     "booked": {
+      "type": "integer",
+      "title": "Booked"
+     }
+    },
+    "type": "object",
+    "required": [
+     "booked"
+    ],
+    "title": "RecurringRun"
+   },
+   "ReprocessIn": {
+    "properties": {
+     "model": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Model"
+     }
+    },
+    "type": "object",
+    "title": "ReprocessIn"
+   },
+   "SplitIn": {
+    "properties": {
+     "key": {
+      "type": "string",
+      "title": "Key"
+     }
+    },
+    "type": "object",
+    "required": [
+     "key"
+    ],
+    "title": "SplitIn"
+   },
+   "StatementImport": {
+    "properties": {
+     "transactions": {
+      "items": {
+       "$ref": "#/components/schemas/StatementTx"
+      },
+      "type": "array",
+      "title": "Transactions"
+     }
+    },
+    "type": "object",
+    "required": [
+     "transactions"
+    ],
+    "title": "StatementImport"
+   },
+   "StatementOut": {
+    "properties": {
+     "transactions": {
+      "items": {
+       "$ref": "#/components/schemas/StatementRowOut"
+      },
+      "type": "array",
+      "title": "Transactions"
+     }
+    },
+    "type": "object",
+    "required": [
+     "transactions"
+    ],
+    "title": "StatementOut"
+   },
+   "StatementRowOut": {
+    "properties": {
+     "external_id": {
+      "type": "string",
+      "title": "External Id"
+     },
+     "date": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Date"
+     },
+     "amount": {
+      "type": "number",
+      "title": "Amount"
+     },
+     "merchant": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Merchant"
+     },
+     "card": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Card"
+     },
+     "owner_id": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Owner Id"
+     },
+     "type": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Type"
+     },
+     "counterparty": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Counterparty"
+     },
+     "kind": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Kind"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "peer_id": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Peer Id"
+     },
+     "match": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/ReceiptBrief"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "imported": {
+      "type": "boolean",
+      "title": "Imported"
+     }
+    },
+    "type": "object",
+    "required": [
+     "external_id",
+     "date",
+     "amount",
+     "merchant",
+     "card",
+     "owner_id",
+     "type",
+     "counterparty",
+     "kind",
+     "peer_id",
+     "match",
+     "imported"
+    ],
+    "title": "StatementRowOut"
+   },
+   "StatementTx": {
+    "properties": {
+     "date": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Date"
+     },
+     "amount": {
+      "type": "number",
+      "exclusiveMinimum": 0.0,
+      "title": "Amount"
+     },
+     "merchant": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Merchant"
+     },
+     "card": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Card"
+     },
+     "owner_id": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Owner Id"
+     },
+     "type": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Type"
+     },
+     "counterparty": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Counterparty"
+     },
+     "kind": {
+      "$ref": "#/components/schemas/Kind",
+      "default": "expense"
+     },
+     "external_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "External Id"
+     },
+     "peer_id": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Peer Id"
+     }
+    },
+    "type": "object",
+    "required": [
+     "amount"
+    ],
+    "title": "StatementTx"
+   },
+   "StoreAmount": {
+    "properties": {
+     "store": {
+      "type": "string",
+      "title": "Store"
+     },
+     "amount": {
+      "type": "number",
+      "title": "Amount"
+     },
+     "receipts": {
+      "type": "integer",
+      "title": "Receipts"
+     }
+    },
+    "type": "object",
+    "required": [
+     "store",
+     "amount",
+     "receipts"
+    ],
+    "title": "StoreAmount"
+   },
+   "SubcategoryAmount": {
+    "properties": {
+     "id": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Id"
+     },
+     "name": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Name"
+     },
+     "amount": {
+      "type": "number",
+      "title": "Amount"
+     },
+     "parent": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Parent"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "name",
+     "amount",
+     "parent"
+    ],
+    "title": "SubcategoryAmount"
+   },
+   "SummaryOut": {
+    "properties": {
+     "total": {
+      "type": "number",
+      "title": "Total"
+     },
+     "receipts": {
+      "type": "integer",
+      "title": "Receipts"
+     },
+     "by_category": {
+      "items": {
+       "$ref": "#/components/schemas/CategoryAmount"
+      },
+      "type": "array",
+      "title": "By Category"
+     },
+     "by_subcategory": {
+      "items": {
+       "$ref": "#/components/schemas/SubcategoryAmount"
+      },
+      "type": "array",
+      "title": "By Subcategory"
+     },
+     "by_user": {
+      "items": {
+       "$ref": "#/components/schemas/CategoryAmount"
+      },
+      "type": "array",
+      "title": "By User"
+     },
+     "by_store": {
+      "items": {
+       "$ref": "#/components/schemas/StoreAmount"
+      },
+      "type": "array",
+      "title": "By Store"
+     },
+     "top_items": {
+      "items": {
+       "$ref": "#/components/schemas/TopItem"
+      },
+      "type": "array",
+      "title": "Top Items"
+     },
+     "income": {
+      "$ref": "#/components/schemas/IncomeSummary"
+     },
+     "transfers_total": {
+      "type": "number",
+      "title": "Transfers Total"
+     }
+    },
+    "type": "object",
+    "required": [
+     "total",
+     "receipts",
+     "by_category",
+     "by_subcategory",
+     "by_user",
+     "by_store",
+     "top_items",
+     "income",
+     "transfers_total"
+    ],
+    "title": "SummaryOut"
+   },
+   "TaskUsage": {
+    "properties": {
+     "calls": {
+      "type": "integer",
+      "title": "Calls"
+     },
+     "failed": {
+      "type": "integer",
+      "title": "Failed"
+     },
+     "cost": {
+      "type": "number",
+      "title": "Cost"
+     },
+     "byok_cost": {
+      "type": "number",
+      "title": "Byok Cost"
+     },
+     "byok_calls": {
+      "type": "integer",
+      "title": "Byok Calls"
+     },
+     "task": {
+      "type": "string",
+      "title": "Task"
+     },
+     "label": {
+      "type": "string",
+      "title": "Label"
+     }
+    },
+    "type": "object",
+    "required": [
+     "calls",
+     "failed",
+     "cost",
+     "byok_cost",
+     "byok_calls",
+     "task",
+     "label"
+    ],
+    "title": "TaskUsage"
+   },
+   "TelegramAuth": {
+    "properties": {
+     "id": {
+      "type": "integer",
+      "title": "Id"
+     },
+     "first_name": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "First Name"
+     },
+     "last_name": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Last Name"
+     },
+     "username": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Username"
+     },
+     "photo_url": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Photo Url"
+     },
+     "auth_date": {
+      "type": "integer",
+      "title": "Auth Date"
+     },
+     "hash": {
+      "type": "string",
+      "title": "Hash"
+     }
+    },
+    "additionalProperties": true,
+    "type": "object",
+    "required": [
+     "id",
+     "auth_date",
+     "hash"
+    ],
+    "title": "TelegramAuth"
+   },
+   "TopItem": {
+    "properties": {
+     "name_normalized": {
+      "type": "string",
+      "title": "Name Normalized"
+     },
+     "name_ru": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Name Ru"
+     },
+     "amount": {
+      "type": "number",
+      "title": "Amount"
+     },
+     "count": {
+      "type": "integer",
+      "title": "Count"
+     }
+    },
+    "type": "object",
+    "required": [
+     "name_normalized",
+     "name_ru",
+     "amount",
+     "count"
+    ],
+    "title": "TopItem"
+   },
+   "UsageOut": {
+    "properties": {
+     "days": {
+      "type": "integer",
+      "title": "Days"
+     },
+     "total": {
+      "$ref": "#/components/schemas/UsageRow"
+     },
+     "by_task": {
+      "items": {
+       "$ref": "#/components/schemas/TaskUsage"
+      },
+      "type": "array",
+      "title": "By Task"
+     },
+     "by_model": {
+      "items": {
+       "$ref": "#/components/schemas/ModelUsage"
+      },
+      "type": "array",
+      "title": "By Model"
+     },
+     "by_day": {
+      "items": {
+       "$ref": "#/components/schemas/DayUsage"
+      },
+      "type": "array",
+      "title": "By Day"
+     }
+    },
+    "type": "object",
+    "required": [
+     "days",
+     "total",
+     "by_task",
+     "by_model",
+     "by_day"
+    ],
+    "title": "UsageOut"
+   },
+   "UsageRow": {
+    "properties": {
+     "calls": {
+      "type": "integer",
+      "title": "Calls"
+     },
+     "failed": {
+      "type": "integer",
+      "title": "Failed"
+     },
+     "cost": {
+      "type": "number",
+      "title": "Cost"
+     },
+     "byok_cost": {
+      "type": "number",
+      "title": "Byok Cost"
+     },
+     "byok_calls": {
+      "type": "integer",
+      "title": "Byok Calls"
+     }
+    },
+    "type": "object",
+    "required": [
+     "calls",
+     "failed",
+     "cost",
+     "byok_cost",
+     "byok_calls"
+    ],
+    "title": "UsageRow"
+   },
+   "UserIn": {
+    "properties": {
+     "name": {
+      "type": "string",
+      "maxLength": 200,
+      "minLength": 1,
+      "title": "Name"
+     }
+    },
+    "type": "object",
+    "required": [
+     "name"
+    ],
+    "title": "UserIn"
+   },
+   "UserOut": {
+    "properties": {
+     "id": {
+      "type": "integer",
+      "title": "Id"
+     },
+     "name": {
+      "type": "string",
+      "title": "Name"
+     },
+     "username": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Username"
+     },
+     "has_telegram": {
+      "type": "boolean",
+      "title": "Has Telegram"
+     },
+     "cards": {
+      "type": "string",
+      "title": "Cards"
+     },
+     "emails": {
+      "type": "string",
+      "title": "Emails"
+     },
+     "bank_names": {
+      "type": "string",
+      "title": "Bank Names"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "name",
+     "username",
+     "has_telegram",
+     "cards",
+     "emails",
+     "bank_names"
+    ],
+    "title": "UserOut"
+   },
+   "UserPatch": {
+    "properties": {
+     "name": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 200,
+        "minLength": 1
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Name"
+     },
+     "cards": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Cards"
+     },
+     "emails": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Emails"
+     },
+     "bank_names": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Bank Names"
+     }
+    },
+    "type": "object",
+    "title": "UserPatch"
+   },
+   "UserSaved": {
+    "properties": {
+     "id": {
+      "type": "integer",
+      "title": "Id"
+     },
+     "name": {
+      "type": "string",
+      "title": "Name"
+     },
+     "username": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Username"
+     },
+     "has_telegram": {
+      "type": "boolean",
+      "title": "Has Telegram"
+     },
+     "cards": {
+      "type": "string",
+      "title": "Cards"
+     },
+     "emails": {
+      "type": "string",
+      "title": "Emails"
+     },
+     "bank_names": {
+      "type": "string",
+      "title": "Bank Names"
+     },
+     "marked_transfers": {
+      "type": "integer",
+      "title": "Marked Transfers"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "name",
+     "username",
+     "has_telegram",
+     "cards",
+     "emails",
+     "bank_names",
+     "marked_transfers"
+    ],
+    "title": "UserSaved"
+   },
+   "ValidationError": {
+    "properties": {
+     "loc": {
+      "items": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "integer"
+        }
+       ]
+      },
+      "type": "array",
+      "title": "Location"
+     },
+     "msg": {
+      "type": "string",
+      "title": "Message"
+     },
+     "type": {
+      "type": "string",
+      "title": "Error Type"
+     },
+     "input": {
+      "title": "Input"
+     },
+     "ctx": {
+      "type": "object",
+      "title": "Context"
+     }
+    },
+    "type": "object",
+    "required": [
+     "loc",
+     "msg",
+     "type"
+    ],
+    "title": "ValidationError"
+   },
+   "WarrantyOut": {
+    "properties": {
+     "item_id": {
+      "type": "integer",
+      "title": "Item Id"
+     },
+     "name": {
+      "type": "string",
+      "title": "Name"
+     },
+     "name_original": {
+      "type": "string",
+      "title": "Name Original"
+     },
+     "total": {
+      "type": "number",
+      "title": "Total"
+     },
+     "warranty_until": {
+      "type": "string",
+      "format": "date",
+      "title": "Warranty Until"
+     },
+     "days_left": {
+      "type": "integer",
+      "title": "Days Left"
+     },
+     "receipt_id": {
+      "type": "integer",
+      "title": "Receipt Id"
+     },
+     "store": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Store"
+     },
+     "purchased_at": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Purchased At"
+     },
+     "has_image": {
+      "type": "boolean",
+      "title": "Has Image"
+     }
+    },
+    "type": "object",
+    "required": [
+     "item_id",
+     "name",
+     "name_original",
+     "total",
+     "warranty_until",
+     "days_left",
+     "receipt_id",
+     "store",
+     "purchased_at",
+     "has_image"
+    ],
+    "title": "WarrantyOut"
+   }
+  }
+ }
+}

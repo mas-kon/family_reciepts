@@ -1,9 +1,12 @@
+from typing import Literal
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import current_viewer
+from app.api.schemas import Ok
 from app.db.models import Category, Item
 from app.db.session import get_session
 
@@ -21,17 +24,25 @@ class CategoryPatch(BaseModel):
     sort_order: int | None = None
 
 
-@router.get("/categories")
+class CategoryOut(BaseModel):
+    id: int
+    name: str
+    parent_id: int | None
+    sort_order: int
+    kind: Literal["expense", "income"]
+
+
+def cat_out(c: Category) -> CategoryOut:
+    return CategoryOut.model_validate(c, from_attributes=True)
+
+
+@router.get("/categories", response_model=list[CategoryOut])
 async def categories(session: AsyncSession = Depends(get_session)):
     rows = await session.scalars(select(Category).order_by(Category.sort_order, Category.id))
     return [cat_out(c) for c in rows]
 
 
-def cat_out(c: Category) -> dict:
-    return {"id": c.id, "name": c.name, "parent_id": c.parent_id, "sort_order": c.sort_order, "kind": c.kind}
-
-
-@router.post("/categories")
+@router.post("/categories", response_model=CategoryOut)
 async def create_category(data: CategoryIn, session: AsyncSession = Depends(get_session)):
     if data.parent_id:
         parent = await session.get(Category, data.parent_id)
@@ -57,7 +68,7 @@ async def create_category(data: CategoryIn, session: AsyncSession = Depends(get_
     return cat_out(c)
 
 
-@router.patch("/categories/{cid}")
+@router.patch("/categories/{cid}", response_model=CategoryOut)
 async def patch_category(cid: int, data: CategoryPatch, session: AsyncSession = Depends(get_session)):
     c = await session.get(Category, cid)
     if not c:
@@ -68,7 +79,7 @@ async def patch_category(cid: int, data: CategoryPatch, session: AsyncSession = 
     return cat_out(c)
 
 
-@router.delete("/categories/{cid}")
+@router.delete("/categories/{cid}", response_model=Ok)
 async def delete_category(cid: int, session: AsyncSession = Depends(get_session)):
     c = await session.get(Category, cid)
     if not c:
@@ -79,4 +90,4 @@ async def delete_category(cid: int, session: AsyncSession = Depends(get_session)
         raise HTTPException(409, "Категория используется: сначала перенесите позиции и подкатегории")
     await session.delete(c)
     await session.commit()
-    return {"ok": True}
+    return Ok()

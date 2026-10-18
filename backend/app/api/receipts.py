@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased, noload
 
 from app.api.deps import Viewer, current_viewer
+from app.api.schemas import Ok
 from app.clock import now_local
 from app.constants import INCOME_DEFAULT, NO_DESCRIPTION, Kind
 from app.db.models import Category, Item, Receipt, User
@@ -41,11 +42,11 @@ class ItemOut(BaseModel):
 class ReceiptOut(BaseModel):
     id: int
     title: str
-    source: str
+    source: Literal["photo", "manual", "recurring", "bank", "voice", "email"]
     store: str | None
     purchased_at: datetime | None
     total: float | None
-    status: str
+    status: Literal["ok", "needs_review", "pending", "failed"]
     review_reason: str | None
     user_id: int | None
     user_name: str | None
@@ -53,8 +54,7 @@ class ReceiptOut(BaseModel):
     has_image: bool
     note: str | None
     import_id: str | None
-    # expense | income | transfer (inside the family)
-    kind: str
+    kind: Kind
     counterparty: str | None
     peer_user_id: int | None
     peer_name: str | None
@@ -68,6 +68,11 @@ class ReceiptDetail(ReceiptOut):
     items_sum: float
 
 
+class ReceiptPage(BaseModel):
+    total: int
+    items: list[ReceiptOut]
+
+
 class ReceiptPatch(BaseModel):
     store: str | None = None
     purchased_at: datetime | None = None
@@ -75,7 +80,7 @@ class ReceiptPatch(BaseModel):
     status: Literal["ok", "needs_review", "pending", "failed"] | None = None
     note: str | None = None
     user_id: int | None = None
-    kind: str | None = Field(None, pattern="^(expense|income|transfer)$")
+    kind: Kind | None = None
     # family member on the other side of a transfer
     peer_user_id: int | None = None
     # remember the counterparty as this member's name in the bank: their transfers are always
@@ -189,7 +194,7 @@ def start_of(d: date | None) -> datetime | None:
 # ---------- receipts ----------
 
 
-@router.get("/receipts")
+@router.get("/receipts", response_model=ReceiptPage)
 async def list_receipts(
     session: AsyncSession = Depends(get_session),
     user_id: int | None = None,
@@ -310,20 +315,21 @@ async def patch_receipt(rid: int, data: ReceiptPatch, session: AsyncSession = De
             await svc.remember_bank_name(peer, r.counterparty)
     for k, v in fields.items():
         setattr(r, k, v)
-    if note_given:
-        # same as replying to the bot: a one-line record takes the description as its name
-        await svc.set_description(r, note or "")
     if fields.get("status") == "ok":
         r.review_reason = None
-    await session.commit()
+    await session.commit()  # all plain edits in one transaction
+    if note_given:
+        # same as replying to the bot: a one-line record takes the description as its name
+        # (may ask the model, so it comes after the commit: no write lock while waiting)
+        await svc.set_description(r, note or "")
     return to_detail(await load_receipt(session, rid))
 
 
-@router.delete("/receipts/{rid}")
+@router.delete("/receipts/{rid}", response_model=Ok)
 async def delete_receipt(rid: int, session: AsyncSession = Depends(get_session)):
     r = await load_receipt(session, rid)
     await ReceiptService(session).delete_receipt(r)
-    return {"ok": True}
+    return Ok()
 
 
 @router.post("/receipts/{rid}/reprocess", response_model=ReceiptDetail)

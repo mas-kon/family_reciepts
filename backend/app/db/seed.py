@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.constants import Kind
 from app.db.models import Category
+from app.db.session import rowcount
 
 OTHER = "Прочее"
 
@@ -57,7 +58,7 @@ async def fail_interrupted(session: AsyncSession) -> int:
         .values(status="failed", review_reason="Распознавание прервано перезапуском сервиса")
     )
     await session.commit()
-    return res.rowcount or 0
+    return rowcount(res)
 
 
 async def seed_categories(session: AsyncSession) -> None:

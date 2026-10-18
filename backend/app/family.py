@@ -23,6 +23,25 @@ async def find_user(session: AsyncSession, token: str) -> User | None:
     return None
 
 
+class FamilyIndex:
+    """Members' cards and bank names, read once for a whole statement instead of per row."""
+
+    def __init__(self, users: list[User]):
+        self.by_card = {c[-4:]: u for u in users for c in csv_list(u.cards)}
+        self.by_bank_name = {normalize_name(n): u for u in users for n in csv_list(u.bank_names)}
+
+    @classmethod
+    async def load(cls, session: AsyncSession) -> "FamilyIndex":
+        return cls(list(await session.scalars(select(User))))
+
+    def owner_by_card(self, card: str | None) -> User | None:
+        return self.by_card.get(card) if card else None
+
+    def by_bank(self, name: str | None) -> User | None:
+        key = normalize_name(name or "")
+        return self.by_bank_name.get(key) if key else None
+
+
 async def owner_by_card(session: AsyncSession, card: str | None) -> User | None:
     if not card:
         return None
@@ -52,14 +71,14 @@ async def family_by_bank_name(session: AsyncSession, name: str | None) -> User |
 
 async def apply_family_names(session: AsyncSession) -> int:
     """Marks recorded transfers to/from family members as inside the family. Called when a
-    member's bank names change. Returns how many records changed."""
+    member's bank names change. Returns how many records changed. The caller commits."""
     changed = 0
+    family = await FamilyIndex.load(session)
     for r in await session.scalars(
         select(Receipt).where(Receipt.counterparty.is_not(None), Receipt.kind != Kind.TRANSFER)
     ):
-        peer = await family_by_bank_name(session, r.counterparty)
+        peer = family.by_bank(r.counterparty)
         if peer:
             r.kind, r.peer_user_id = "transfer", peer.id
             changed += 1
-    await session.commit()
     return changed

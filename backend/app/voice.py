@@ -2,6 +2,7 @@
 
 import io
 from dataclasses import dataclass
+from typing import cast
 
 from sqlalchemy import select
 
@@ -16,10 +17,11 @@ MAX_VOICE_SECONDS = 60  # longer is a conversation, not an expense; also the cap
 def to_wav(data: bytes, rate: int = 16000) -> bytes:
     """Telegram voice (OGG/Opus) or any audio -> 16 kHz mono WAV that every audio model accepts."""
     import av
+    from av.container import InputContainer, OutputContainer
 
-    src = av.open(io.BytesIO(data))
+    src = cast(InputContainer, av.open(io.BytesIO(data)))
     out_buf = io.BytesIO()
-    out = av.open(out_buf, "w", format="wav")
+    out = cast(OutputContainer, av.open(out_buf, "w", format="wav"))
     stream = out.add_stream("pcm_s16le", rate=rate, layout="mono")
     resampler = av.AudioResampler(format="s16", layout="mono", rate=rate)
     samples = 0

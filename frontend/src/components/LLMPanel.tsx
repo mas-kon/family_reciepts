@@ -12,7 +12,7 @@ const usd = (v: number | null | undefined) =>
   v === null || v === undefined ? '—' : `$${Math.abs(v) < 0.1 && v !== 0 ? v.toFixed(4) : v.toFixed(2)}`
 
 function BalanceCard({ b, alertBelow }: { b: ProviderBalance; alertBelow: number }) {
-  const low = b.balance !== undefined && alertBelow > 0 && b.balance < alertBelow
+  const low = b.balance != null && alertBelow > 0 && b.balance < alertBelow
   const k = b.key
   return (
     <Card withBorder padding="md">
@@ -24,7 +24,7 @@ function BalanceCard({ b, alertBelow }: { b: ProviderBalance; alertBelow: number
           </Group>
         </Anchor>
       </Group>
-      {b.balance !== undefined && (
+      {b.balance != null && (
         <Text fz={28} fw={700} className="num" ta="left" c={low ? 'red' : undefined}>
           {b.currency && b.currency !== 'USD' ? `${b.balance.toFixed(2)} ${b.currency}` : usd(b.balance)}
         </Text>

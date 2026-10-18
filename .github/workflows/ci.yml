@@ -13,6 +13,7 @@ jobs:
       - uses: astral-sh/setup-uv@v5
       - run: uv sync --frozen
       - run: uv run ruff check .
+      - run: uv run pyright
       - run: uv run pytest -q
 
   frontend:
@@ -26,6 +27,7 @@ jobs:
         with:
           node-version: 22
       - run: npm ci
+      - run: npx --yes openapi-typescript@7.13.0 openapi.json -o src/api-schema.ts && git diff --exit-code src/api-schema.ts
       - run: npx tsc -b
       - run: npm run lint
       - run: npm run build

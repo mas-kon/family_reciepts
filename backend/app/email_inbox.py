@@ -17,6 +17,7 @@ from email.header import decode_header, make_header
 from email.message import Message
 from email.utils import parseaddr
 from html.parser import HTMLParser
+from typing import cast
 
 from app.bot.ui import format_receipt, receipt_keyboard
 from app.clock import now_local
@@ -106,7 +107,7 @@ def parse_mail(raw: bytes) -> ParsedMail:
         if part.is_multipart():
             continue
         ctype = part.get_content_type()
-        payload = part.get_payload(decode=True) or b""
+        payload = cast(bytes, part.get_payload(decode=True) or b"")
         is_pdf = ctype == "application/pdf" or (part.get_filename() or "").lower().endswith(".pdf")
         if ctype in IMAGE_TYPES or is_pdf:
             if is_pdf or len(payload) > 20_000:  # skip logos and tracking pixels in HTML mail

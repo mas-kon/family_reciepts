@@ -27,6 +27,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "httpx>=0.28.1",
+    "pyright>=1.1.414",
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
     "ruff>=0.17.1",
@@ -49,3 +50,9 @@ ignore = ["BLE001"]
 [tool.ruff.lint.flake8-bugbear]
 # FastAPI declares dependencies and parameters as default values
 extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.File"]
+
+[tool.pyright]
+include = ["app"]
+pythonVersion = "3.13"
+venvPath = "."
+venv = ".venv"

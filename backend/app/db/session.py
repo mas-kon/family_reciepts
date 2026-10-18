@@ -1,6 +1,7 @@
 from collections.abc import AsyncIterator
+from typing import cast
 
-from sqlalchemy import event
+from sqlalchemy import CursorResult, event
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.config import get_settings
@@ -33,9 +34,15 @@ def init_engine(url: str | None = None):
     return _engine
 
 
+def rowcount(result) -> int:
+    """Rows changed by an UPDATE/INSERT/DELETE (the typed Result has no such attribute)."""
+    return cast("CursorResult", result).rowcount or 0
+
+
 def session_factory() -> async_sessionmaker[AsyncSession]:
     if _sessionmaker is None:
         init_engine()
+    assert _sessionmaker is not None
     return _sessionmaker
 
 

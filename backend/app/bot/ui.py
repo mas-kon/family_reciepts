@@ -68,3 +68,15 @@ async def format_receipt(session: AsyncSession, r: Receipt, sender_id: int | Non
     if r.status == "needs_review" and r.review_reason:
         lines.append(f"\n<i>Проверьте в вебе: {html.escape(r.review_reason)}</i>")
     return "\n".join(lines)
+
+
+def duplicate_keyboard(new_id: int, old_id: int) -> InlineKeyboardMarkup:
+    rows = [
+        [
+            InlineKeyboardButton(text="🗑 Да, дубль — удалить", callback_data=f"dupdel:{new_id}"),
+            InlineKeyboardButton(text="Нет, это другой чек", callback_data=f"dupkeep:{new_id}"),
+        ]
+    ]
+    if base := get_settings().web_base_url:
+        rows.append([InlineKeyboardButton(text="🔎 Открыть записанный", url=f"{base}/receipts/{old_id}")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)

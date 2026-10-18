@@ -1,6 +1,8 @@
 import asyncio
+from datetime import datetime
 
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel
 
 from app import email_inbox
 from app.api.deps import current_viewer
@@ -12,29 +14,43 @@ router = APIRouter(prefix="/api/mail", tags=["mail"], dependencies=[Depends(curr
 HINT_AUTH = "Проверьте IMAP_USER и IMAP_PASSWORD в .env (для Gmail нужен пароль приложения, не обычный пароль)."
 
 
-def _out() -> dict:
+class MailStatus(BaseModel):
+    enabled: bool
+    address: str | None
+    host: str | None
+    poll_minutes: int
+    checked_at: datetime | None
+    # None: not checked since the start
+    ok: bool | None
+    error: str | None
+    hint: str | None
+    # receipts booked from mail since the start
+    received: int
+
+
+def _out() -> MailStatus:
     s = get_settings()
     st = email_inbox.status
-    return {
-        "enabled": bool(s.imap_host),
-        "address": s.imap_user or None,
-        "host": s.imap_host or None,
-        "poll_minutes": s.imap_poll_minutes,
-        "checked_at": st.checked_at,
-        "ok": st.ok,
-        "error": st.error,
-        "hint": HINT_AUTH if st.error and ("AUTH" in st.error.upper() or "CREDENTIAL" in st.error.upper()) else None,
-        "received": st.received,
-    }
+    return MailStatus(
+        enabled=bool(s.imap_host),
+        address=s.imap_user or None,
+        host=s.imap_host or None,
+        poll_minutes=s.imap_poll_minutes,
+        checked_at=st.checked_at,
+        ok=st.ok,
+        error=st.error,
+        hint=HINT_AUTH if st.error and ("AUTH" in st.error.upper() or "CREDENTIAL" in st.error.upper()) else None,
+        received=st.received,
+    )
 
 
-@router.get("/status")
+@router.get("/status", response_model=MailStatus)
 async def mail_status():
     """Whether the mailbox is connected and what the last look into it found."""
     return _out()
 
 
-@router.post("/check")
+@router.post("/check", response_model=MailStatus)
 async def mail_check():
     """Tries to log in right now instead of waiting for the next poll."""
     if get_settings().imap_host:

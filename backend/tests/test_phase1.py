@@ -50,7 +50,7 @@ async def test_password_login_with_non_ascii_and_throttling(client, monkeypatch)
 
 
 def test_empty_allow_list_is_closed_outside_dev(monkeypatch):
-    from app.bot.handlers import _allowed
+    from app.bot.access import allowed as _allowed
 
     s = get_settings()
     monkeypatch.setattr(s, "allowed_chat_ids", "")

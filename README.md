@@ -258,6 +258,8 @@ cd frontend && npm run dev
 cd backend && uv run pytest
 # new migration after changing the models
 cd backend && uv run alembic revision --autogenerate -m "description"
+# after changing an API response: regenerate the web app's types (frontend/src/api-schema.ts)
+cd frontend && npm run gen:api
 ```
 
 API documentation: `/api/docs`.
@@ -266,7 +268,10 @@ Where things are in the backend:
 
 | Module | What it does |
 |---|---|
-| `app/receipts/service.py` | receipt recognition, cascade, PDFs, electronic receipts, text expenses |
+| `app/receipts/service.py` | `ReceiptService`, assembled from the parts below |
+| `app/receipts/recognition.py` | receipt recognition: photos, PDFs, e-mails, model cascade, duplicates |
+| `app/receipts/records.py` | records without a picture (typed, spoken, recurring, bank) and edits |
+| `app/receipts/base.py`, `parsing.py`, `images.py` | shared service basics, parsing of typed text, picture and PDF work |
 | `app/bank.py` | bank notifications, statements, transaction types and transfers inside the family |
 | `app/voice.py` | voice messages |
 | `app/products.py` | product merging |
@@ -276,7 +281,9 @@ Where things are in the backend:
 | `app/reports.py` | monthly report and its comment |
 | `app/llm/` | LLM client (one per process, model fallback), prompts and response schemas |
 | `app/llm/usage.py` | request log, provider balances, low-balance warning |
-| `app/bot/handlers.py` | the bot (an access check for family chats runs before every handler) |
+| `app/bot/handlers.py` | the bot's root router: access check for family chats, then the handler groups in order |
+| `app/bot/start.py`, `photos.py`, `statements.py`, `records.py`, `audio.py`, `banking.py` | handler groups: help, receipt pictures and PDFs, statements, typed records and edits, voice, bank messages |
+| `app/bot/access.py`, `common.py` | access middleware, helpers shared by the handlers |
 | `app/bot/ui.py` | bot messages and buttons, also used by the jobs and the mailbox poller |
 | `app/family.py` | family members found by name, card, e-mail or the name in the bank |
 | `app/clock.py` | local time (`now_local`) |

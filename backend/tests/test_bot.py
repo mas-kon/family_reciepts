@@ -10,7 +10,7 @@ from aiogram.methods import EditMessageText, GetFile, SendMessage
 from aiogram.types import Chat, File, Message, Update
 from sqlalchemy import func, select
 
-from app.bot import handlers
+from app.bot import handlers, photos, statements
 from app.db.models import Receipt
 from app.receipts.service import ReceiptService
 from tests.conftest import LIDL, FakeLLM, receipt_image
@@ -71,12 +71,12 @@ def dp():
 @pytest.fixture
 def fake_llm(monkeypatch):
     llm = FakeLLM(LIDL)
-    orig = handlers.ReceiptService.__init__
+    orig = ReceiptService.__init__
 
     def init(self, session, _llm=None):
         orig(self, session, llm)
 
-    monkeypatch.setattr(handlers.ReceiptService, "__init__", init)
+    monkeypatch.setattr(ReceiptService, "__init__", init)
     return llm
 
 
@@ -225,7 +225,7 @@ async def test_pdf_statement_is_booked_on_button(session, fake_llm, dp, monkeypa
         ]
     }
     fake_llm.manual = {"name": "Zoom", "amount": 17.54, "category": "Связь и интернет"}
-    monkeypatch.setattr(handlers, "statement_text", lambda data, name: "Выписка IBAN LT903250089798526389 баланс")
+    monkeypatch.setattr(photos, "statement_text", lambda data, name: "Выписка IBAN LT903250089798526389 баланс")
     fs = FakeSession(b"%PDF-1.4")
     bot = Bot("42:TEST", session=fs, default=DefaultBotProperties(parse_mode="HTML"))
     chat = {"id": CHAT.id, "type": "group", "title": "Семья"}
@@ -255,7 +255,7 @@ async def test_pdf_statement_is_booked_on_button(session, fake_llm, dp, monkeypa
     assert "Между своими счетами: 1" in text and "→ Вера" in text and "Доходы (1, 1500.00 €)" in text
     assert await session.scalar(select(func.count(Receipt.id))) == 0  # nothing booked before the button
 
-    token = next(iter(handlers._statements))
+    token = next(iter(statements._statements))
     await dp.feed_update(
         bot,
         Update.model_validate(

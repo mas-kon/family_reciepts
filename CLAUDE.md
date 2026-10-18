@@ -16,17 +16,17 @@ Every change that affects behaviour, settings, commands or setup updates the doc
 - Both versions say the same thing. Change one, change the other.
 - `.env.example` and `.env.example.ru` hold identical settings; only the comments differ. Check: `diff <(grep -v '^#' .env.example | grep -v '^$') <(grep -v '^#' .env.example.ru | grep -v '^$')`.
 - In the English README, UI labels are given in English with the Russian original in brackets: Settings → Family («Настройки → Семья»).
-- New bot commands go into the bot cheat sheet in both READMEs and into `HELP` in `backend/app/bot/handlers.py`.
+- New bot commands go into the bot cheat sheet in both READMEs and into `HELP` in `backend/app/bot/start.py`.
 - New backend modules go into the module table under "Development" / «Разработка».
 
 ## Layout
 
 - `backend/app/` — Python 3.13, uv. FastAPI, aiogram 3, SQLAlchemy 2 async on SQLite, APScheduler. One process runs the web app, the bot and the scheduler (`app/main.py`).
-  - `receipts/service.py` receipts and single records (`book_single`), `bank.py` bank messages, statements, record kinds and family transfers, `family.py` member lookups, `clock.py` (`now_local`), `constants.py` (`Kind`), `bot/ui.py` messages and buttons, `voice.py`, `products.py`, `ask.py`, `email_inbox.py`, `warranty.py`, `reports.py`, `stats.py`, `scheduler.py`.
+  - `receipts/` `service.py` is `ReceiptService` assembled from `recognition.py` (pictures, PDFs, cascade, duplicates) and `records.py` (`book_single`, typed and spoken records, edits) over `base.py`; `parsing.py`, `images.py`;  `bank.py` bank messages, statements, record kinds and family transfers, `family.py` member lookups, `clock.py` (`now_local`), `constants.py` (`Kind`), `bot/ui.py` messages and buttons, `voice.py`, `products.py`, `ask.py`, `email_inbox.py`, `warranty.py`, `reports.py`, `stats.py`, `scheduler.py`.
   - `llm/` client (one shared `get_llm()`, model fallback, usage logging), `prompt.py`, `schema.py`, `usage.py` (request log, balances).
-  - `api/` FastAPI routers, `bot/handlers.py` the bot.
-- `backend/alembic/versions/` hand-numbered migrations `0001`… `0008`.
-- `frontend/src/` React 19, Vite, TypeScript, Mantine, TanStack Query, Recharts. `api.ts` holds the types that mirror the API.
+  - `api/` FastAPI routers; `bot/` the bot: `handlers.py` is the root router (access check, then the groups `start`, `photos`, `statements`, `records`, `audio`, `banking` in the order they are tried: the first matching handler wins).
+- `backend/alembic/versions/` hand-numbered migrations `0001`… `0009`.
+- `frontend/src/` React 19, Vite, TypeScript, Mantine, TanStack Query, Recharts. Types of API responses are generated from the backend's `response_model`s: after changing one, run `npm run gen:api` in `frontend/` (updates `openapi.json` and `src/api-schema.ts`; a test and CI fail if they are stale). `api.ts` gives them their short names. Every endpoint declares a `response_model`.
 - `data/` (git-ignored) holds `app.db` and receipt photos. This is the family's real data.
 
 ## Commands
@@ -34,6 +34,7 @@ Every change that affects behaviour, settings, commands or setup updates the doc
 ```bash
 cd backend && uv run pytest                      # backend tests
 cd backend && uv run ruff check .                # lint (CI runs it too)
+cd backend && uv run pyright                     # type check (CI runs it too)
 cd frontend && npx tsc -b && npm run build       # type check and build
 docker compose up -d --build                     # deploy (from the project root); migrations run at startup
 docker compose logs -f

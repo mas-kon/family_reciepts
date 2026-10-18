@@ -1,7 +1,7 @@
 """AI features in the web UI: questions, bank statements, product grouping, warranties."""
 
 import asyncio
-from datetime import datetime
+from datetime import date, datetime
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel, Field
@@ -41,7 +41,13 @@ class AskIn(BaseModel):
     history: list[dict] = Field(default_factory=list)
 
 
-@router.post("/ask")
+class AskOut(BaseModel):
+    answer: str
+    model: str
+    tools: list[str]
+
+
+@router.post("/ask", response_model=AskOut)
 async def ask(data: AskIn, session: AsyncSession = Depends(get_session)):
     try:
         return await answer(session, data.question, data.history)
@@ -52,19 +58,43 @@ async def ask(data: AskIn, session: AsyncSession = Depends(get_session)):
 # ---------- bank statements ----------
 
 
-def _receipt_brief(r: Receipt | None) -> dict | None:
+class ReceiptBrief(BaseModel):
+    id: int
+    title: str
+    purchased_at: datetime | None
+    total: float | None
+    source: str
+
+
+class StatementRowOut(BaseModel):
+    external_id: str
+    date: datetime | None
+    amount: float
+    merchant: str | None
+    card: str | None
+    owner_id: int | None
+    type: str | None
+    counterparty: str | None
+    # None: own money moved, not booked by default
+    kind: Kind | None
+    peer_id: int | None
+    match: ReceiptBrief | None
+    imported: bool
+
+
+class StatementOut(BaseModel):
+    transactions: list[StatementRowOut]
+
+
+def _receipt_brief(r: Receipt | None) -> ReceiptBrief | None:
     if not r:
         return None
-    return {
-        "id": r.id,
-        "title": r.store or r.note or "Запись",
-        "purchased_at": r.purchased_at,
-        "total": r.total,
-        "source": r.source,
-    }
+    return ReceiptBrief(
+        id=r.id, title=r.store or r.note or "Запись", purchased_at=r.purchased_at, total=r.total, source=r.source
+    )
 
 
-@router.post("/bank/statement")
+@router.post("/bank/statement", response_model=StatementOut)
 async def bank_statement(file: UploadFile = File(...), session: AsyncSession = Depends(get_session)):
     """Reads a statement and shows which expenses are not recorded yet. Nothing is saved."""
     if file.size is not None and file.size > MAX_STATEMENT_BYTES:
@@ -111,7 +141,7 @@ class StatementTx(BaseModel):
     owner_id: int | None = None
     type: str | None = None
     counterparty: str | None = None
-    kind: str = Field("expense", pattern="^(expense|income|transfer)$")
+    kind: Kind = Kind.EXPENSE
     # id from the analysis (identical operations of a statement differ in it)
     external_id: str | None = None
     # family member of a transfer; with a counterparty it is remembered as their name in the bank
@@ -122,7 +152,14 @@ class StatementImport(BaseModel):
     transactions: list[StatementTx]
 
 
-@router.post("/bank/import")
+class ImportOut(BaseModel):
+    booked: int
+    skipped: int
+    import_id: str | None
+    marked_transfers: int
+
+
+@router.post("/bank/import", response_model=ImportOut)
 async def bank_import(
     data: StatementImport,
     session: AsyncSession = Depends(get_session),
@@ -146,6 +183,7 @@ async def bank_import(
         booked += 1
         if peer and t.counterparty:
             remembered += await svc.remember_bank_name(peer, t.counterparty)
+            await session.commit()
     return {
         "booked": booked,
         "skipped": skipped,
@@ -154,13 +192,27 @@ async def bank_import(
     }
 
 
-@router.get("/bank/imports")
+class ImportInfo(BaseModel):
+    import_id: str
+    created_at: datetime | None
+    count: int
+    total: float
+    date_from: datetime | None
+    date_to: datetime | None
+    from_bot: bool
+
+
+@router.get("/bank/imports", response_model=list[ImportInfo])
 async def bank_imports(session: AsyncSession = Depends(get_session)):
     """Statements imported so far (from the web or the bot), newest first."""
     return [i.__dict__ for i in await list_imports(session)]
 
 
-@router.delete("/bank/imports/{import_id}")
+class Deleted(BaseModel):
+    deleted: int
+
+
+@router.delete("/bank/imports/{import_id}", response_model=Deleted)
 async def bank_import_delete(import_id: str, session: AsyncSession = Depends(get_session)):
     deleted = await delete_import(session, import_id)
     if not deleted:
@@ -176,7 +228,11 @@ class MergeIn(BaseModel):
     product: str = Field(min_length=1, max_length=300)
 
 
-@router.post("/products/merge")
+class Lines(BaseModel):
+    lines: int
+
+
+@router.post("/products/merge", response_model=Lines)
 async def products_merge(data: MergeIn, session: AsyncSession = Depends(get_session)):
     return {"lines": await products_mod.merge(session, data.keys, data.product)}
 
@@ -185,12 +241,16 @@ class SplitIn(BaseModel):
     key: str
 
 
-@router.post("/products/split")
+@router.post("/products/split", response_model=Lines)
 async def products_split(data: SplitIn, session: AsyncSession = Depends(get_session)):
     return {"lines": await products_mod.split(session, data.key)}
 
 
-@router.post("/products/group")
+class Queued(BaseModel):
+    queued: int
+
+
+@router.post("/products/group", response_model=Queued)
 async def products_group(session: AsyncSession = Depends(get_session)):
     """Groups every not yet grouped product name with the LLM. Takes minutes for a long backlog,
     so it runs in the background; the lists show the result as it arrives."""
@@ -202,7 +262,20 @@ async def products_group(session: AsyncSession = Depends(get_session)):
 # ---------- warranties ----------
 
 
-@router.get("/warranties")
+class WarrantyOut(BaseModel):
+    item_id: int
+    name: str
+    name_original: str
+    total: float
+    warranty_until: date
+    days_left: int
+    receipt_id: int
+    store: str | None
+    purchased_at: datetime | None
+    has_image: bool
+
+
+@router.get("/warranties", response_model=list[WarrantyOut])
 async def warranties(expired: bool = False, session: AsyncSession = Depends(get_session)):
     today = now_local().date()
     q = (
@@ -228,4 +301,5 @@ async def warranties(expired: bool = False, session: AsyncSession = Depends(get_
             "has_image": bool(r.image_path),
         }
         for it, r in rows
+        if it.warranty_until
     ]

@@ -1,9 +1,12 @@
+from typing import Literal
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import current_viewer
+from app.api.schemas import Ok
 from app.db.models import Category, Recurring, User
 from app.db.session import get_session
 from app.scheduler import book_recurring
@@ -22,18 +25,24 @@ class RecurringIn(BaseModel):
     kind: str = Field("expense", pattern="^(expense|income)$")
 
 
-def rec_out(r: Recurring) -> dict:
-    return {
-        "id": r.id,
-        "name": r.name,
-        "amount": r.amount,
-        "category_id": r.category_id,
-        "user_id": r.user_id,
-        "day_of_month": r.day_of_month,
-        "active": r.active,
-        "last_booked_month": r.last_booked_month,
-        "kind": r.kind,
-    }
+class RecurringOut(BaseModel):
+    id: int
+    name: str
+    amount: float
+    category_id: int | None
+    user_id: int | None
+    day_of_month: int
+    active: bool
+    last_booked_month: str | None
+    kind: Literal["expense", "income"]
+
+
+class RecurringRun(BaseModel):
+    booked: int
+
+
+def rec_out(r: Recurring) -> RecurringOut:
+    return RecurringOut.model_validate(r, from_attributes=True)
 
 
 async def _check_recurring_refs(session: AsyncSession, data: RecurringIn) -> None:
@@ -43,13 +52,13 @@ async def _check_recurring_refs(session: AsyncSession, data: RecurringIn) -> Non
         raise HTTPException(400, "Член семьи: такого нет")
 
 
-@router.get("/recurring")
+@router.get("/recurring", response_model=list[RecurringOut])
 async def list_recurring(session: AsyncSession = Depends(get_session)):
     rows = await session.scalars(select(Recurring).order_by(Recurring.day_of_month, Recurring.name))
     return [rec_out(r) for r in rows]
 
 
-@router.post("/recurring")
+@router.post("/recurring", response_model=RecurringOut)
 async def create_recurring(data: RecurringIn, session: AsyncSession = Depends(get_session)):
     await _check_recurring_refs(session, data)
     r = Recurring(**data.model_dump())
@@ -58,7 +67,7 @@ async def create_recurring(data: RecurringIn, session: AsyncSession = Depends(ge
     return rec_out(r)
 
 
-@router.put("/recurring/{rid}")
+@router.put("/recurring/{rid}", response_model=RecurringOut)
 async def update_recurring(rid: int, data: RecurringIn, session: AsyncSession = Depends(get_session)):
     r = await session.get(Recurring, rid)
     if not r:
@@ -70,16 +79,16 @@ async def update_recurring(rid: int, data: RecurringIn, session: AsyncSession = 
     return rec_out(r)
 
 
-@router.delete("/recurring/{rid}")
+@router.delete("/recurring/{rid}", response_model=Ok)
 async def delete_recurring(rid: int, session: AsyncSession = Depends(get_session)):
     r = await session.get(Recurring, rid)
     if r:
         await session.delete(r)
         await session.commit()
-    return {"ok": True}
+    return Ok()
 
 
-@router.post("/recurring/run")
+@router.post("/recurring/run", response_model=RecurringRun)
 async def run_recurring(request: Request):
     booked = await book_recurring(getattr(request.app.state, "bot", None))
     return {"booked": booked}

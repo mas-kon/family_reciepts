@@ -24,7 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.clock import now_local
 from app.constants import INCOME_DEFAULT, Kind
 from app.db.models import Receipt, User
-from app.family import family_by_bank_name, owner_by_card
+from app.family import FamilyIndex
 from app.llm.schema import ParsedBankTx
 from app.receipts.service import ReceiptService
 from app.receipts.text import normalize_name
@@ -87,19 +87,27 @@ class TxPlan:
     peer: User | None = None
 
 
-async def plan_tx(session: AsyncSession, tx: ParsedBankTx) -> TxPlan:
+def plan_tx(family: FamilyIndex, tx: ParsedBankTx) -> TxPlan:
     if tx.type == "own":
         return TxPlan(None)
-    if tx.type in {"transfer_out", "transfer_in"} and (peer := await family_by_bank_name(session, tx.counterparty)):
+    if tx.type in {"transfer_out", "transfer_in"} and (peer := family.by_bank(tx.counterparty)):
         return TxPlan("transfer", peer)
     return TxPlan("expense" if tx.outgoing else "income")
+
+
+async def recorded_by_id(session: AsyncSession, ids: list[str]) -> dict[str, Receipt]:
+    """Records already booked under these external ids, in one query."""
+    if not ids:
+        return {}
+    rows = await session.scalars(select(Receipt).where(Receipt.external_id.in_(ids)))
+    return {r.external_id: r for r in rows if r.external_id}
 
 
 async def find_match(
     session: AsyncSession,
     amount: float,
     when: datetime | None,
-    kind: Kind = Kind.EXPENSE,
+    kind: str = Kind.EXPENSE,
     *,
     merchant: str | None = None,
     import_id: str | None = None,
@@ -146,7 +154,7 @@ async def book_tx(
     tx: ParsedBankTx,
     owner: User | None,
     *,
-    kind: Kind = Kind.EXPENSE,
+    kind: str = Kind.EXPENSE,
     peer: User | None = None,
     chat_id: int | None = None,
     message_id: int | None = None,
@@ -196,18 +204,20 @@ async def handle_bank_text(
     out: list[BankResult] = []
     txs = res.data.transactions
     ids_all = external_ids(txs)
+    family = await FamilyIndex.load(svc.session)
+    recorded = await recorded_by_id(svc.session, ids_all)
     for tx, ext in zip(txs, ids_all):
-        plan = await plan_tx(svc.session, tx)
+        plan = plan_tx(family, tx)
         if plan.kind is None or tx.amount <= 0:
             continue
-        existing = await svc.session.scalar(select(Receipt).where(Receipt.external_id == ext))
+        existing = recorded.get(ext)
         match = existing or await find_match(
             svc.session, tx.amount, tx.date, plan.kind, merchant=tx.merchant, batch_ids=set(ids_all)
         )
         if match:
             out.append(BankResult(tx=tx, kind=plan.kind, match=match))
             continue
-        owner = await owner_by_card(svc.session, tx.card) or sender
+        owner = family.owner_by_card(tx.card) or sender
         receipt = await book_tx(
             svc,
             tx,
@@ -244,11 +254,14 @@ async def book_statement(
     booked: list[Receipt] = []
     skipped = 0
     ids_all = batch_ids if batch_ids is not None else (ids or external_ids(txs))
-    for tx, ext in zip(txs, ids or external_ids(txs)):
-        plan = await plan_tx(svc.session, tx)
+    row_ids = ids or external_ids(txs)
+    family = await FamilyIndex.load(svc.session)
+    recorded = await recorded_by_id(svc.session, row_ids)
+    for tx, ext in zip(txs, row_ids):
+        plan = plan_tx(family, tx)
         if plan.kind is None or tx.amount <= 0:
             continue
-        if await svc.session.scalar(select(Receipt).where(Receipt.external_id == ext)) or await find_match(
+        if ext in recorded or await find_match(
             svc.session,
             tx.amount,
             tx.date,
@@ -259,7 +272,7 @@ async def book_statement(
         ):
             skipped += 1
             continue
-        owner = await owner_by_card(svc.session, tx.card) or sender
+        owner = family.owner_by_card(tx.card) or sender
         booked.append(
             await book_tx(
                 svc,
@@ -289,6 +302,7 @@ def statement_text(data: bytes, filename: str) -> str:
         if not text.strip():
             raise ValueError("В PDF нет текста (похоже на скан). Выгрузите выписку в CSV.")
         return text
+    text = ""
     for enc in ("utf-8-sig", "cp1251", "latin-1"):
         try:
             text = data.decode(enc)
@@ -323,11 +337,13 @@ async def analyse_statement(svc: ReceiptService, text: str) -> list[StatementRow
     rows: list[StatementRow] = []
     txs = res.data.transactions
     ids_all = external_ids(txs)
+    family = await FamilyIndex.load(svc.session)
+    recorded = await recorded_by_id(svc.session, ids_all)
     for tx, ext in zip(txs, ids_all):
         if tx.amount <= 0:
             continue
-        plan = await plan_tx(svc.session, tx)
-        imported = await svc.session.scalar(select(Receipt).where(Receipt.external_id == ext))
+        plan = plan_tx(family, tx)
+        imported = recorded.get(ext)
         match = imported
         if match is None and plan.kind:
             match = await find_match(
@@ -337,7 +353,7 @@ async def analyse_statement(svc: ReceiptService, text: str) -> list[StatementRow
             StatementRow(
                 tx=tx,
                 external_id=ext,
-                owner=await owner_by_card(svc.session, tx.card),
+                owner=family.owner_by_card(tx.card),
                 match=match,
                 imported=imported is not None,
                 kind=plan.kind,
@@ -377,7 +393,7 @@ async def list_imports(session: AsyncSession) -> list[ImportInfo]:
         .order_by(func.min(Receipt.created_at).desc())
     )
     return [
-        ImportInfo(iid, created, count, round(total, 2), d1, d2, chat is not None)
+        ImportInfo(iid or "", created, count, round(total or 0, 2), d1, d2, chat is not None)
         for iid, created, count, total, d1, d2, chat in await session.execute(q)
     ]
 
