@@ -60,15 +60,17 @@ async def book_recurring(bot: Bot | None) -> int:
                 category_id=rec.category_id,
                 user_id=rec.user_id,
                 source="recurring",
+                kind=rec.kind,
                 purchased_at=today.replace(day=_due_day(rec.day_of_month, today), hour=12, minute=0, second=0),
-                note="Регулярный платёж",
+                note="Регулярное поступление" if rec.kind == "income" else "Регулярный платёж",
             )
             rec.last_booked_month = month
             await session.commit()
             booked += 1
             chat = get_settings().notify_chat_id
             if bot and chat:
-                await bot.send_message(chat, f"🔁 Записан регулярный платёж: {rec.name}, {rec.amount:.2f} €")
+                what = "регулярное поступление" if rec.kind == "income" else "регулярный платёж"
+                await bot.send_message(chat, f"🔁 Записан {what}: {rec.name}, {rec.amount:.2f} €")
                 for a in await new_budget_alerts(session, receipt):
                     await bot.send_message(chat, a)
     return booked
@@ -82,7 +84,10 @@ def create_scheduler(bot: Bot | None) -> AsyncIOScheduler:
     # catch up on missed recurring payments right after start
     sched.add_job(book_recurring, args=[bot], next_run_time=datetime.now(ZoneInfo(tz)))
 
+    from app.llm.usage import check_balance
     from app.warranty import remind
+
+    sched.add_job(check_balance, CronTrigger(hour=9, minute=30, timezone=tz), args=[bot])
 
     sched.add_job(remind, CronTrigger(hour=10, minute=0, timezone=tz), args=[bot])
 

@@ -87,6 +87,11 @@ async def bank_statement(file: UploadFile = File(...), session: AsyncSession = D
                 "owner_id": r.owner.id if r.owner else None,
                 "match": _receipt_brief(r.match),
                 "imported": r.imported,
+                "type": r.tx.type,
+                "counterparty": r.tx.counterparty,
+                # expense | income | transfer, null: own money moved, not booked by default
+                "kind": r.kind,
+                "peer_id": r.peer.id if r.peer else None,
             }
             for r in rows
         ]
@@ -99,6 +104,11 @@ class StatementTx(BaseModel):
     merchant: str | None = None
     card: str | None = None
     owner_id: int | None = None
+    type: str | None = None
+    counterparty: str | None = None
+    kind: str = Field("expense", pattern="^(expense|income|transfer)$")
+    # family member of a transfer; with a counterparty it is remembered as their name in the bank
+    peer_id: int | None = None
 
 
 class StatementImport(BaseModel):
@@ -114,15 +124,21 @@ async def bank_import(
     svc = ReceiptService(session)
     booked = skipped = 0
     import_id = new_import_id()
+    remembered = 0
     for t in data.transactions:
-        tx = ParsedBankTx(amount=t.amount, merchant=t.merchant, date=t.date, card=t.card)
+        tx = ParsedBankTx(
+            amount=t.amount, merchant=t.merchant, date=t.date, card=t.card, type=t.type, counterparty=t.counterparty
+        )
         if await session.scalar(select(Receipt.id).where(Receipt.external_id == tx_external_id(tx))):
             skipped += 1
             continue
         owner = await session.get(User, t.owner_id or viewer.user_id) if (t.owner_id or viewer.user_id) else None
-        await book_tx(svc, tx, owner, import_id=import_id)
+        peer = await session.get(User, t.peer_id) if t.kind == "transfer" and t.peer_id else None
+        await book_tx(svc, tx, owner, kind=t.kind, peer=peer, import_id=import_id)
         booked += 1
-    return {"booked": booked, "skipped": skipped, "import_id": import_id if booked else None}
+        if peer and t.counterparty:
+            remembered += await svc.remember_bank_name(peer, t.counterparty)
+    return {"booked": booked, "skipped": skipped, "import_id": import_id if booked else None, "marked_transfers": remembered}
 
 
 @router.get("/bank/imports")

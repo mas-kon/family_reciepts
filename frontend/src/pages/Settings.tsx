@@ -6,11 +6,13 @@ import {
   Group,
   Modal,
   NumberInput,
+  SegmentedControl,
   Select,
   Stack,
   Switch,
   Table,
   Tabs,
+  TagsInput,
   Text,
   TextInput,
   Title,
@@ -20,8 +22,40 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import dayjs from 'dayjs'
 import { useState } from 'react'
 import { api, qs, type BudgetRow, type Category, type Recurring } from '../api'
+import { LLMPanel } from '../components/LLMPanel'
 import { categoryName, categoryOptions, money } from '../format'
 import { notifyError, notifyOk, useCategories, useMeta, useUsers } from '../hooks'
+
+/** Several values of one person (cards, e-mails, names in the bank): stored comma-separated,
+ * edited as tags. Enter or a comma adds a value. */
+function ListInput({
+  value,
+  onSave,
+  label,
+  placeholder,
+  w,
+}: {
+  value: string
+  onSave: (v: string) => void
+  label: string
+  placeholder: string
+  w: number
+}) {
+  const tags = value ? value.split(',').filter(Boolean) : []
+  return (
+    <TagsInput
+      size="xs"
+      w={w}
+      aria-label={label}
+      placeholder={tags.length ? undefined : placeholder}
+      value={tags}
+      onChange={(v) => v.join(',') !== value && onSave(v.join(','))}
+      splitChars={[',', ';', ' '].filter((c) => c !== ' ' || label !== 'Имя в банке')}
+      acceptValueOnBlur
+      clearable={false}
+    />
+  )
+}
 
 function Family() {
   const qc = useQueryClient()
@@ -39,12 +73,17 @@ function Family() {
     onError: notifyError,
   })
   const save = useMutation({
-    mutationFn: ({ id, ...fields }: { id: number; name?: string; cards?: string; emails?: string }) =>
-      api(`/users/${id}`, { method: 'PATCH', json: fields }),
-    onSuccess: () => {
+    mutationFn: ({ id, ...fields }: { id: number; name?: string; cards?: string; emails?: string; bank_names?: string }) =>
+      api<{ marked_transfers: number }>(`/users/${id}`, { method: 'PATCH', json: fields }),
+    onSuccess: (r) => {
       setEditing(null)
       refresh()
-      qc.invalidateQueries({ queryKey: ['receipts'] })
+      if (r.marked_transfers) {
+        notifyOk(`Переводов внутри семьи найдено: ${r.marked_transfers}. Из расходов они убраны.`)
+        qc.invalidateQueries()
+      } else {
+        qc.invalidateQueries({ queryKey: ['receipts'] })
+      }
     },
     onError: notifyError,
   })
@@ -62,8 +101,14 @@ function Family() {
         Имя в боте пишется так же, как здесь, достаточно первого слова.
       </Text>
       <Text size="sm" c="dimmed">
-        <b>Карты</b>: последние 4 цифры через запятую. Уведомление банка и строка выписки с этой картой запишутся на
-        этого человека. <b>Почта</b>: адреса, с которых человек пересылает электронные чеки.
+        В полях ниже можно указать несколько значений: введите и нажмите Enter или запятую. <b>Карты</b>: последние 4
+        цифры. Уведомление банка и строка выписки с этой картой запишутся на
+        этого человека. <b>Почта</b>: все адреса, с которых человек пересылает электронные чеки.
+      </Text>
+      <Text size="sm" c="dimmed">
+        <b>Имя в банке</b>: как банк пишет этого человека в переводах, например <Code>Vera Maslennikova</Code>. Переводы
+        ему и от него считаются переводами внутри семьи и не входят ни в расходы, ни в доходы. Иначе карманные деньги
+        ребёнку посчитались бы дважды: при переводе и когда он их потратит. Прошлые переводы тоже пересчитаются.
       </Text>
       <Group align="flex-end">
         <TextInput
@@ -78,13 +123,15 @@ function Family() {
           Добавить
         </Button>
       </Group>
-      <Table maw={900}>
+      <Table.ScrollContainer minWidth={900}>
+      <Table>
         <Table.Thead>
           <Table.Tr>
             <Table.Th>Имя</Table.Th>
             <Table.Th>Telegram</Table.Th>
             <Table.Th>Карты</Table.Th>
             <Table.Th>Почта</Table.Th>
+            <Table.Th>Имя в банке</Table.Th>
             <Table.Th />
           </Table.Tr>
         </Table.Thead>
@@ -107,23 +154,30 @@ function Family() {
               </Table.Td>
               <Table.Td c="dimmed">{u.has_telegram ? (u.username ? `@${u.username}` : 'есть') : 'нет'}</Table.Td>
               <Table.Td>
-                <TextInput
-                  size="xs"
-                  w={130}
-                  placeholder="1234, 5678"
-                  defaultValue={u.cards}
-                  aria-label="Карты"
-                  onBlur={(e) => e.currentTarget.value !== u.cards && save.mutate({ id: u.id, cards: e.currentTarget.value })}
+                <ListInput
+                  w={150}
+                  label="Карты"
+                  placeholder="1234"
+                  value={u.cards}
+                  onSave={(v) => save.mutate({ id: u.id, cards: v })}
                 />
               </Table.Td>
               <Table.Td>
-                <TextInput
-                  size="xs"
-                  w={220}
+                <ListInput
+                  w={260}
+                  label="Почта"
                   placeholder="name@example.com"
-                  defaultValue={u.emails}
-                  aria-label="Почта"
-                  onBlur={(e) => e.currentTarget.value !== u.emails && save.mutate({ id: u.id, emails: e.currentTarget.value })}
+                  value={u.emails}
+                  onSave={(v) => save.mutate({ id: u.id, emails: v })}
+                />
+              </Table.Td>
+              <Table.Td>
+                <ListInput
+                  w={240}
+                  label="Имя в банке"
+                  placeholder="Vera Maslennikova"
+                  value={u.bank_names}
+                  onSave={(v) => save.mutate({ id: u.id, bank_names: v })}
                 />
               </Table.Td>
               <Table.Td w={90}>
@@ -140,6 +194,7 @@ function Family() {
           ))}
         </Table.Tbody>
       </Table>
+      </Table.ScrollContainer>
     </Stack>
   )
 }
@@ -208,7 +263,7 @@ function Budgets() {
   )
 }
 
-const EMPTY_REC = { name: '', amount: 0, category_id: null, user_id: null, day_of_month: 1, active: true }
+const EMPTY_REC: RecDraft = { name: '', amount: 0, category_id: null, user_id: null, day_of_month: 1, active: true, kind: 'expense' }
 type RecDraft = Omit<Recurring, 'id' | 'last_booked_month'> & { id?: number }
 
 function RecurringTab() {
@@ -243,8 +298,8 @@ function RecurringTab() {
   return (
     <Stack>
       <Text size="sm" c="dimmed">
-        Аренда, интернет, подписки. В нужный день месяца платёж записывается автоматически, и бот сообщает об этом в
-        группе.
+        Аренда, интернет, подписки, а также зарплата и другие регулярные поступления. В нужный день месяца запись
+        появляется автоматически, и бот сообщает об этом в группе.
       </Text>
       <Group>
         <Button leftSection={<IconPlus size={16} />} onClick={() => setDraft({ ...EMPTY_REC })}>
@@ -269,7 +324,9 @@ function RecurringTab() {
           {list.data?.map((r) => (
             <Table.Tr key={r.id} opacity={r.active ? 1 : 0.5}>
               <Table.Td>{r.name}</Table.Td>
-              <Table.Td className="num">{money(r.amount)}</Table.Td>
+              <Table.Td className="num" c={r.kind === 'income' ? 'teal' : undefined}>
+                {r.kind === 'income' ? `+${money(r.amount)}` : money(r.amount)}
+              </Table.Td>
               <Table.Td>{categoryName(cats.data, r.category_id)}</Table.Td>
               <Table.Td className="num">{r.day_of_month}</Table.Td>
               <Table.Td>{r.last_booked_month ?? '—'}</Table.Td>
@@ -291,6 +348,14 @@ function RecurringTab() {
       <Modal opened={!!draft} onClose={() => setDraft(null)} title={draft?.id ? 'Регулярный платёж' : 'Новый регулярный платёж'}>
         {draft && (
           <Stack>
+            <SegmentedControl
+              value={draft.kind}
+              onChange={(v) => setDraft({ ...draft, kind: v as 'expense' | 'income', category_id: null })}
+              data={[
+                { value: 'expense', label: 'Платёж' },
+                { value: 'income', label: 'Поступление' },
+              ]}
+            />
             <TextInput label="Название" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.currentTarget.value })} />
             <NumberInput label="Сумма, €" value={draft.amount} decimalScale={2} min={0} onChange={(v) => setDraft({ ...draft, amount: Number(v) })} />
             <Select
@@ -298,10 +363,10 @@ function RecurringTab() {
               searchable
               value={draft.category_id ? String(draft.category_id) : null}
               onChange={(v) => setDraft({ ...draft, category_id: v ? Number(v) : null })}
-              data={categoryOptions(cats.data ?? [], true)}
+              data={categoryOptions(cats.data ?? [], true, draft.kind)}
             />
             <Select
-              label="Кто платит"
+              label={draft.kind === 'income' ? 'Кто получает' : 'Кто платит'}
               clearable
               value={draft.user_id ? String(draft.user_id) : null}
               onChange={(v) => setDraft({ ...draft, user_id: v ? Number(v) : null })}
@@ -339,10 +404,19 @@ function Categories() {
   const [editing, setEditing] = useState<Category | null>(null)
   const refresh = () => qc.invalidateQueries({ queryKey: ['categories'] })
 
+  const [incomeName, setIncomeName] = useState('')
   const create = useMutation({
     mutationFn: () => api('/categories', { method: 'POST', json: { name, parent_id: parent ? Number(parent) : null } }),
     onSuccess: () => {
       setName('')
+      refresh()
+    },
+    onError: notifyError,
+  })
+  const createIncome = useMutation({
+    mutationFn: () => api('/categories', { method: 'POST', json: { name: incomeName, kind: 'income' } }),
+    onSuccess: () => {
+      setIncomeName('')
       refresh()
     },
     onError: notifyError,
@@ -361,7 +435,8 @@ function Categories() {
     onError: notifyError,
   })
 
-  const all = cats.data ?? []
+  const all = (cats.data ?? []).filter((c) => c.kind !== 'income')
+  const incomes = (cats.data ?? []).filter((c) => c.kind === 'income')
   const parents = all.filter((c) => !c.parent_id)
 
   const row = (c: Category, indent: boolean) => (
@@ -418,6 +493,23 @@ function Categories() {
           {parents.flatMap((p) => [row(p, false), ...all.filter((c) => c.parent_id === p.id).map((c) => row(c, true))])}
         </Table.Tbody>
       </Table>
+
+      <Title order={4} mt="md">
+        Категории доходов
+      </Title>
+      <Text size="sm" c="dimmed">
+        Доход получает категорию по описанию: «зарплата» попадёт в «Зарплату», «возврат» в «Возвраты». Остальное в
+        «Прочие доходы», категорию можно поменять в записи.
+      </Text>
+      <Group align="flex-end">
+        <TextInput label="Новая категория дохода" value={incomeName} onChange={(e) => setIncomeName(e.currentTarget.value)} w={240} />
+        <Button onClick={() => createIncome.mutate()} disabled={!incomeName} loading={createIncome.isPending}>
+          Добавить
+        </Button>
+      </Group>
+      <Table maw={520}>
+        <Table.Tbody>{incomes.map((c) => row(c, false))}</Table.Tbody>
+      </Table>
     </Stack>
   )
 }
@@ -446,6 +538,25 @@ function Other() {
           </Button>
         </Group>
       </Card>
+      <Card withBorder>
+        <Title order={5} mb="xs">
+          Чеки по почте
+        </Title>
+        <Text size="sm">
+          {meta.data?.email_enabled
+            ? `Включено. Пересылайте электронные чеки на ${meta.data.email_address}: бот проверяет ящик и пишет о каждом чеке в группу.`
+            : 'Выключено. Чтобы включить, задайте IMAP_HOST, IMAP_USER и IMAP_PASSWORD в .env.'}
+        </Text>
+      </Card>
+    </Stack>
+  )
+}
+
+function LLMTab() {
+  const meta = useMeta()
+  return (
+    <Stack>
+      <LLMPanel />
       <Card withBorder>
         <Title order={5} mb="xs">
           Нейросеть
@@ -489,16 +600,6 @@ function Other() {
           Меняется в файле .env, затем перезапуск сервиса.
         </Text>
       </Card>
-      <Card withBorder>
-        <Title order={5} mb="xs">
-          Чеки по почте
-        </Title>
-        <Text size="sm">
-          {meta.data?.email_enabled
-            ? `Включено. Пересылайте электронные чеки на ${meta.data.email_address}: бот проверяет ящик и пишет о каждом чеке в группу.`
-            : 'Выключено. Чтобы включить, задайте IMAP_HOST, IMAP_USER и IMAP_PASSWORD в .env.'}
-        </Text>
-      </Card>
     </Stack>
   )
 }
@@ -513,7 +614,8 @@ export default function Settings() {
           <Tabs.Tab value="budgets">Бюджеты</Tabs.Tab>
           <Tabs.Tab value="recurring">Регулярные платежи</Tabs.Tab>
           <Tabs.Tab value="categories">Категории</Tabs.Tab>
-          <Tabs.Tab value="other">Отчёт и нейросеть</Tabs.Tab>
+          <Tabs.Tab value="llm">Нейросеть</Tabs.Tab>
+          <Tabs.Tab value="other">Отчёт и почта</Tabs.Tab>
         </Tabs.List>
         <Tabs.Panel value="family" pt="md">
           <Family />
@@ -526,6 +628,9 @@ export default function Settings() {
         </Tabs.Panel>
         <Tabs.Panel value="categories" pt="md">
           <Categories />
+        </Tabs.Panel>
+        <Tabs.Panel value="llm" pt="md">
+          <LLMTab />
         </Tabs.Panel>
         <Tabs.Panel value="other" pt="md">
           <Other />

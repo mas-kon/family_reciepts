@@ -1,7 +1,12 @@
 """Bank notifications (forwarded SMS/push) and bank statements (CSV/PDF).
 
-A bank message becomes an expense record (source "bank"), unless the same amount is already
-recorded around the same date: then it is only reported as a match.
+Every operation becomes a record (source "bank") of one kind:
+- expense: a purchase, a fee, a transfer to someone outside the family;
+- income: salary, a refund, money from someone outside the family;
+- transfer: money sent to or received from a family member (Settings → Семья → name in the bank).
+  Counted neither as spent nor as earned, so a child's pocket money is not spent twice.
+Moves between own accounts and top-ups from an own card are not booked at all.
+An operation whose amount is already recorded around the same date is only reported as a match.
 """
 
 import csv
@@ -18,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models import Receipt, User
 from app.llm.schema import ParsedBankTx
 from app.receipts.service import ReceiptService, now_local
+from app.receipts.text import normalize_name
 
 MATCH_DAYS = 2
 MATCH_TOLERANCE = 0.01
@@ -25,7 +31,8 @@ MATCH_TOLERANCE = 0.01
 _AMOUNT = re.compile(r"\d+[.,]\d{2}\s*(?:€|eur|евро|лв|bgn)|(?:€|eur)\s*\d", re.IGNORECASE)
 _BANK_WORDS = re.compile(
     r"карт|card|pos|плащане|покупка|покупк|оплата|списан|transaction|payment|трансакц|транзакц|"
-    r"debit|дебит|теглене|withdraw|изтеглен|превод|transfer",
+    r"debit|дебит|теглене|withdraw|изтеглен|превод|transfer|"
+    r"постъплен|получен|зачислен|поступлен|пополнен|received|incoming|credit|кредит|заплата|зарплат",
     re.IGNORECASE,
 )
 
@@ -63,12 +70,61 @@ async def owner_by_card(session: AsyncSession, card: str | None) -> User | None:
     return None
 
 
-async def find_match(session: AsyncSession, amount: float, when: datetime | None) -> Receipt | None:
-    """An already recorded expense with the same total around the same date."""
+def _names(value: str | None) -> set[str]:
+    return {normalize_name(n) for n in (value or "").split(",") if n.strip()}
+
+
+async def family_by_bank_name(session: AsyncSession, name: str | None) -> User | None:
+    """Family member whose name in the bank (Settings → Семья) is this transfer's person."""
+    key = normalize_name(name or "")
+    if not key:
+        return None
+    for u in await session.scalars(select(User).where(User.bank_names.is_not(None))):
+        if key in _names(u.bank_names):
+            return u
+    return None
+
+
+async def apply_family_names(session: AsyncSession) -> int:
+    """Marks recorded transfers to/from family members as inside the family. Called when a
+    member's bank names change. Returns how many records changed."""
+    changed = 0
+    for r in await session.scalars(
+        select(Receipt).where(Receipt.counterparty.is_not(None), Receipt.kind != "transfer")
+    ):
+        peer = await family_by_bank_name(session, r.counterparty)
+        if peer:
+            r.kind, r.peer_user_id = "transfer", peer.id
+            changed += 1
+    await session.commit()
+    return changed
+
+
+@dataclass
+class TxPlan:
+    """How one bank operation is booked. kind None: not booked (own money moved)."""
+
+    kind: str | None
+    peer: User | None = None
+
+
+async def plan_tx(session: AsyncSession, tx: ParsedBankTx) -> TxPlan:
+    if tx.type == "own":
+        return TxPlan(None)
+    if tx.type in {"transfer_out", "transfer_in"} and (peer := await family_by_bank_name(session, tx.counterparty)):
+        return TxPlan("transfer", peer)
+    return TxPlan("expense" if tx.outgoing else "income")
+
+
+async def find_match(
+    session: AsyncSession, amount: float, when: datetime | None, kind: str = "expense"
+) -> Receipt | None:
+    """An already recorded operation of this kind with the same total around the same date."""
     when = when or now_local()
     q = (
         select(Receipt)
         .where(
+            Receipt.kind == kind,
             Receipt.total.between(amount - MATCH_TOLERANCE, amount + MATCH_TOLERANCE),
             Receipt.purchased_at.between(when - timedelta(days=MATCH_DAYS), when + timedelta(days=MATCH_DAYS)),
             Receipt.status != "failed",
@@ -81,6 +137,7 @@ async def find_match(session: AsyncSession, amount: float, when: datetime | None
 @dataclass
 class BankResult:
     tx: ParsedBankTx
+    kind: str
     receipt: Receipt | None = None  # booked now
     match: Receipt | None = None  # already recorded before, nothing booked
 
@@ -90,12 +147,22 @@ async def book_tx(
     tx: ParsedBankTx,
     owner: User | None,
     *,
+    kind: str = "expense",
+    peer: User | None = None,
     chat_id: int | None = None,
     message_id: int | None = None,
     import_id: str | None = None,
 ) -> Receipt:
-    name = tx.merchant or "Оплата картой"
-    category_id = await svc.classify(name, tx.amount) if tx.merchant else None
+    if kind == "transfer":
+        name = tx.merchant or (f"Перевод: {peer.name}" if peer else "Перевод в семье")
+        category_id = None
+    elif kind == "income":
+        name = tx.merchant or "Поступление"
+        category_id = await svc.income_category(name)
+    else:
+        name = tx.merchant or "Оплата картой"
+        # a transfer to a person has no shop to guess the category from
+        category_id = await svc.classify(name, tx.amount) if tx.merchant and tx.type == "purchase" else None
     return await svc.book_single(
         name=name,
         amount=tx.amount,
@@ -109,6 +176,9 @@ async def book_tx(
         message_id=message_id,
         external_id=tx_external_id(tx),
         import_id=import_id,
+        kind=kind,
+        counterparty=tx.counterparty,
+        peer_user_id=peer.id if peer else None,
     )
 
 
@@ -121,20 +191,24 @@ async def handle_bank_text(
     message_id: int | None = None,
 ) -> list[BankResult]:
     """Forwarded bank notification -> records. The card owner (Settings → Семья) wins over the
-    sender."""
+    sender. Moves between own accounts are skipped."""
     res = await svc.llm.parse_bank(text)
     out: list[BankResult] = []
     for tx in res.data.transactions:
-        if not tx.is_expense or tx.amount <= 0:
+        plan = await plan_tx(svc.session, tx)
+        if plan.kind is None or tx.amount <= 0:
             continue
         ext = tx_external_id(tx)
         existing = await svc.session.scalar(select(Receipt).where(Receipt.external_id == ext))
-        match = existing or await find_match(svc.session, tx.amount, tx.date)
+        match = existing or await find_match(svc.session, tx.amount, tx.date, plan.kind)
         if match:
-            out.append(BankResult(tx=tx, match=match))
+            out.append(BankResult(tx=tx, kind=plan.kind, match=match))
             continue
         owner = await owner_by_card(svc.session, tx.card) or sender
-        out.append(BankResult(tx=tx, receipt=await book_tx(svc, tx, owner, chat_id=chat_id, message_id=message_id)))
+        receipt = await book_tx(
+            svc, tx, owner, kind=plan.kind, peer=plan.peer, chat_id=chat_id, message_id=message_id
+        )
+        out.append(BankResult(tx=tx, kind=plan.kind, receipt=receipt))
     return out
 
 
@@ -150,22 +224,25 @@ async def book_statement(
     chat_id: int | None = None,
     import_id: str | None = None,
 ) -> tuple[list[Receipt], int]:
-    """Books statement expenses that are not recorded yet. Returns (booked, skipped).
+    """Books statement operations that are not recorded yet. Returns (booked, skipped).
     All of them get one import_id."""
     import_id = import_id or new_import_id()
     booked: list[Receipt] = []
     skipped = 0
     for tx in txs:
-        if not tx.is_expense or tx.amount <= 0:
+        plan = await plan_tx(svc.session, tx)
+        if plan.kind is None or tx.amount <= 0:
             continue
         ext = tx_external_id(tx)
         if await svc.session.scalar(select(Receipt).where(Receipt.external_id == ext)) or await find_match(
-            svc.session, tx.amount, tx.date
+            svc.session, tx.amount, tx.date, plan.kind
         ):
             skipped += 1
             continue
         owner = await owner_by_card(svc.session, tx.card) or sender
-        booked.append(await book_tx(svc, tx, owner, chat_id=chat_id, import_id=import_id))
+        booked.append(
+            await book_tx(svc, tx, owner, kind=plan.kind, peer=plan.peer, chat_id=chat_id, import_id=import_id)
+        )
     return booked, skipped
 
 
@@ -207,23 +284,32 @@ class StatementRow:
     owner: User | None
     match: Receipt | None
     imported: bool
+    # expense | income | transfer, None for a move between own accounts
+    kind: str | None
+    peer: User | None
 
 
 async def analyse_statement(svc: ReceiptService, text: str) -> list[StatementRow]:
     res = await svc.llm.parse_bank(text)
     rows: list[StatementRow] = []
     for tx in res.data.transactions:
-        if not tx.is_expense or tx.amount <= 0:
+        if tx.amount <= 0:
             continue
+        plan = await plan_tx(svc.session, tx)
         ext = tx_external_id(tx)
         imported = await svc.session.scalar(select(Receipt).where(Receipt.external_id == ext))
+        match = imported
+        if match is None and plan.kind:
+            match = await find_match(svc.session, tx.amount, tx.date, plan.kind)
         rows.append(
             StatementRow(
                 tx=tx,
                 external_id=ext,
                 owner=await owner_by_card(svc.session, tx.card),
-                match=imported or await find_match(svc.session, tx.amount, tx.date),
+                match=match,
                 imported=imported is not None,
+                kind=plan.kind,
+                peer=plan.peer,
             )
         )
     return rows
@@ -237,7 +323,7 @@ class ImportInfo:
     import_id: str
     created_at: datetime | None
     count: int
-    total: float
+    total: float  # expenses only
     date_from: datetime | None
     date_to: datetime | None
     from_bot: bool
@@ -249,7 +335,7 @@ async def list_imports(session: AsyncSession) -> list[ImportInfo]:
             Receipt.import_id,
             func.min(Receipt.created_at),
             func.count(Receipt.id),
-            func.coalesce(func.sum(Receipt.total), 0),
+            func.coalesce(func.sum(Receipt.total).filter(Receipt.kind == "expense"), 0),
             func.min(Receipt.purchased_at),
             func.max(Receipt.purchased_at),
             func.max(Receipt.chat_id),

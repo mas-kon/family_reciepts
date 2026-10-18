@@ -41,9 +41,19 @@ export const SOURCE_LABEL: Record<string, string> = {
 export const sourceLabel = (r: { source: string; import_id?: string | null }) =>
   r.import_id ? 'Выписка' : SOURCE_LABEL[r.source]
 
+export const KIND_LABEL: Record<string, string> = {
+  expense: 'Расход',
+  income: 'Доход',
+  transfer: 'Внутри семьи',
+}
+
+/** Signed amount: "+1500.00 €" for an income, plain for an expense. */
+export const kindMoney = (kind: string, v: number | null | undefined) =>
+  kind === 'income' ? `+${money(v)}` : money(v)
+
 /** Options for a category Select, grouped by parent. */
-export function categoryOptions(cats: Category[], leavesOnly = false) {
-  const parents = cats.filter((c) => !c.parent_id)
+export function categoryOptions(cats: Category[], leavesOnly = false, kind: 'expense' | 'income' = 'expense') {
+  const parents = cats.filter((c) => !c.parent_id && (c.kind ?? 'expense') === kind)
   return parents.map((p) => {
     const children = cats.filter((c) => c.parent_id === p.id)
     const items = children.length

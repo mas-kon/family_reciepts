@@ -46,7 +46,10 @@ export interface Category {
   name: string
   parent_id: number | null
   sort_order: number
+  kind: 'expense' | 'income'
 }
+
+export type Kind = 'expense' | 'income' | 'transfer'
 
 export interface User {
   id: number
@@ -55,6 +58,8 @@ export interface User {
   has_telegram: boolean
   cards: string
   emails: string
+  /** how the bank writes this person in transfers, comma-separated */
+  bank_names: string
 }
 
 export interface Item {
@@ -88,6 +93,10 @@ export interface Receipt {
   note: string | null
   /** records booked from one bank statement share it */
   import_id: string | null
+  kind: Kind
+  counterparty: string | null
+  peer_user_id: number | null
+  peer_name: string | null
   created_at: string
 }
 
@@ -106,11 +115,15 @@ export interface Summary {
   by_user: { id: number | null; name: string | null; amount: number }[]
   by_store: { store: string; amount: number; receipts: number }[]
   top_items: { name_normalized: string; name_ru: string | null; amount: number; count: number }[]
+  income: { total: number; by_category: { name: string; amount: number }[] }
+  /** money moved inside the family: neither spent nor earned */
+  transfers_total: number
 }
 
 export interface MonthRow {
   month: string
   total: number
+  income: number
   categories: Record<string, number>
 }
 
@@ -132,6 +145,7 @@ export interface Recurring {
   day_of_month: number
   active: boolean
   last_booked_month: string | null
+  kind: 'expense' | 'income'
 }
 
 export interface PricePoint {
@@ -186,6 +200,11 @@ export interface StatementTx {
   merchant: string | null
   card: string | null
   owner_id: number | null
+  type: string | null
+  counterparty: string | null
+  /** null: a move between own accounts, not booked by default */
+  kind: Kind | null
+  peer_id: number | null
   match: { id: number; title: string; purchased_at: string | null; total: number | null; source: string } | null
   imported: boolean
 }
@@ -204,4 +223,41 @@ export interface AskResult {
   answer: string
   model: string
   tools: string[]
+}
+
+export interface ProviderBalance {
+  provider: string
+  currency?: string
+  url: string
+  balance?: number
+  total_credits?: number
+  error?: string
+  key?: {
+    limit: number | null
+    limit_remaining: number | null
+    limit_reset: string | null
+    usage_daily: number | null
+    usage_monthly: number | null
+    byok_usage_monthly: number | null
+    is_free_tier: boolean | null
+    free_requests_remaining: number | null
+  }
+}
+
+export interface UsageRow {
+  calls: number
+  failed: number
+  /** USD charged to the OpenRouter balance */
+  cost: number
+  /** USD charged to own provider keys (BYOK) */
+  byok_cost: number
+  byok_calls: number
+}
+
+export interface LLMUsage {
+  days: number
+  total: UsageRow
+  by_task: (UsageRow & { task: string; label: string })[]
+  by_model: (UsageRow & { model: string; provider: string | null })[]
+  by_day: (UsageRow & { day: string })[]
 }

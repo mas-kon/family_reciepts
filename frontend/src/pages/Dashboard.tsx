@@ -61,7 +61,7 @@ export default function Dashboard() {
   const openCategory = (id: string | number | null | undefined) => {
     if (id === undefined) return
     if (id === null) id = 'none'
-    navigate(`/receipts${qs({ ...range, category_id: id, user_id: f.userId })}`)
+    navigate(`/receipts${qs({ ...range, category_id: id, user_id: f.userId, kind: 'expense' })}`)
   }
 
   return (
@@ -75,10 +75,23 @@ export default function Dashboard() {
         <Loader />
       ) : (
         <>
-          <SimpleGrid cols={{ base: 1, xs: 3 }}>
-            <Stat label="Потрачено" value={money(s.total)} />
-            <Stat label="Записей" value={String(s.receipts)} />
-            <Stat label="Средний чек" value={money(avgReceipt)} />
+          <SimpleGrid cols={{ base: 1, xs: 2, md: 4 }}>
+            <Stat label="Потрачено" value={money(s.total)} hint={`Записей: ${s.receipts}, в среднем ${money(avgReceipt)}`} />
+            <Stat
+              label="Доходы"
+              value={money(s.income.total)}
+              hint={s.income.by_category.slice(0, 2).map((c) => `${c.name} ${money(c.amount)}`).join(', ') || undefined}
+            />
+            <Stat
+              label="Остаток"
+              value={`${s.income.total - s.total >= 0 ? '+' : '−'}${money(Math.abs(s.income.total - s.total))}`}
+              hint="Доходы минус расходы"
+            />
+            <Stat
+              label="Внутри семьи"
+              value={money(s.transfers_total)}
+              hint="Переводы членам семьи, не расход"
+            />
           </SimpleGrid>
 
           <SimpleGrid cols={{ base: 1, md: 2 }}>

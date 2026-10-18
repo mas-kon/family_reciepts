@@ -194,9 +194,16 @@ async def test_voice_message(session, fake_llm, dp, monkeypatch):
 
 
 async def test_pdf_statement_is_booked_on_button(session, fake_llm, dp, monkeypatch):
+    from app.db.models import User
+
+    session.add(User(name="Вера", bank_names="Vera Maslennikova"))
+    await session.commit()
     fake_llm.bank = {"transactions": [
-        {"date": "2026-09-24T10:00", "amount": 17.54, "merchant": "Zoom", "card": "0767"},
-        {"date": "2026-09-24T10:00", "amount": 15, "merchant": "Пополнение", "is_expense": False},
+        {"date": "2026-09-24T10:00", "amount": 17.54, "merchant": "Zoom", "card": "0767", "type": "purchase"},
+        {"date": "2026-09-24T10:00", "amount": 15, "merchant": "Пополнение с карты", "type": "own"},
+        {"date": "2026-09-25T10:00", "amount": 4, "merchant": "Перевод: Vera Maslennikova", "type": "transfer_out",
+         "counterparty": "VERA  MASLENNIKOVA"},
+        {"date": "2026-09-26T10:00", "amount": 1500, "merchant": "Заплата ООД", "type": "income"},
     ]}
     fake_llm.manual = {"name": "Zoom", "amount": 17.54, "category": "Связь и интернет"}
     monkeypatch.setattr(handlers, "statement_text", lambda data, name: "Выписка IBAN LT903250089798526389 баланс")
@@ -210,6 +217,7 @@ async def test_pdf_statement_is_booked_on_button(session, fake_llm, dp, monkeypa
     }}))
     text = fs.texts()[-1]
     assert "Выписка" in text and "Zoom" in text and "Пополнение" not in text
+    assert "Между своими счетами: 1" in text and "→ Вера" in text and "Доходы (1, 1500.00 €)" in text
     assert await session.scalar(select(func.count(Receipt.id))) == 0  # nothing booked before the button
 
     token = next(iter(handlers._statements))
@@ -217,9 +225,13 @@ async def test_pdf_statement_is_booked_on_button(session, fake_llm, dp, monkeypa
         "id": "cb1", "from": user, "chat_instance": "ci", "data": f"stmt:{token}",
         "message": {"message_id": 1001, "date": int(dt.datetime.now().timestamp()), "chat": chat, "text": text},
     }}))
-    assert "Записано: 1" in fs.texts()[-1]
-    r = await session.scalar(select(Receipt))
-    assert r.source == "bank" and r.total == 17.54 and r.store == "Zoom" and r.import_id
+    assert "Записано: 3" in fs.texts()[-1]
+    rows = {r.store: r for r in await session.scalars(select(Receipt))}
+    r = rows["Zoom"]
+    assert r.source == "bank" and r.total == 17.54 and r.kind == "expense" and r.import_id
+    assert rows["Заплата ООД"].kind == "income"
+    vera = rows["Перевод: Vera Maslennikova"]
+    assert vera.kind == "transfer" and vera.peer.name == "Вера"
 
     # "Удалить всю выписку" asks first, then removes every record of this statement
     def cb(uid, data):
@@ -230,8 +242,17 @@ async def test_pdf_statement_is_booked_on_button(session, fake_llm, dp, monkeypa
         }})
 
     await dp.feed_update(bot, cb(42, f"impdel:{r.import_id}"))
-    assert await session.scalar(select(func.count(Receipt.id))) == 1
+    assert await session.scalar(select(func.count(Receipt.id))) == 3
     await dp.feed_update(bot, cb(43, f"impdelok:{r.import_id}"))
-    assert "Выписка удалена, записей: 1" in fs.texts()[-1]
+    assert "Выписка удалена, записей: 3" in fs.texts()[-1]
     session.expunge_all()
     assert await session.scalar(select(func.count(Receipt.id))) == 0
+
+
+async def test_income_command(session, fake_llm, dp):
+    fs = FakeSession(b"")
+    bot = Bot("42:TEST", session=fs, default=DefaultBotProperties(parse_mode="HTML"))
+    await dp.feed_update(bot, text_update(50, "/income зарплата 1500"))
+    assert fs.texts()[-1].startswith("💰") and "Доход 1500.00 €" in fs.texts()[-1]
+    r = await session.scalar(select(Receipt))
+    assert r.kind == "income" and r.items[0].category.name == "Зарплата"

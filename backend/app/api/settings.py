@@ -1,9 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import current_viewer
+from app.bank import apply_family_names
 from app.config import get_settings
 from app.db.models import Budget, Category, Item, Receipt, Recurring, User
 from app.db.session import get_session
@@ -12,6 +13,24 @@ from app.scheduler import book_recurring
 from app.stats import budgets_status
 
 router = APIRouter(prefix="/api", tags=["settings"], dependencies=[Depends(current_viewer)])
+
+
+# ---------- LLM balance and usage ----------
+
+
+@router.get("/llm/balance")
+async def llm_balance(fresh: bool = False):
+    from app.llm.usage import balances
+
+    s = get_settings()
+    return {"alert_below": s.llm_balance_alert, "providers": await balances(fresh)}
+
+
+@router.get("/llm/usage")
+async def llm_usage(days: int = Query(30, ge=1, le=366), session: AsyncSession = Depends(get_session)):
+    from app.llm.usage import usage_report
+
+    return await usage_report(session, days)
 
 
 # ---------- meta / users ----------
@@ -41,6 +60,7 @@ def user_out(u: User) -> dict:
         "has_telegram": u.telegram_id is not None,
         "cards": u.cards or "",
         "emails": u.emails or "",
+        "bank_names": u.bank_names or "",
     }
 
 
@@ -61,6 +81,11 @@ def _clean_list(value: str | None, digits: bool) -> str | None:
     return ",".join(dict.fromkeys(parts)) or None
 
 
+def _clean_names(value: str | None) -> str | None:
+    parts = [" ".join(p.split()) for p in (value or "").replace(";", ",").split(",")]
+    return ",".join(dict.fromkeys(p for p in parts if p)) or None
+
+
 class UserIn(BaseModel):
     name: str = Field(min_length=1, max_length=200)
 
@@ -70,6 +95,8 @@ class UserPatch(BaseModel):
     # last 4 digits of bank cards, comma-separated
     cards: str | None = None
     emails: str | None = None
+    # how the bank writes this person in transfers, comma-separated
+    bank_names: str | None = None
 
 
 @router.get("/users")
@@ -99,8 +126,14 @@ async def update_user(uid: int, data: UserPatch, session: AsyncSession = Depends
         u.cards = _clean_list(fields["cards"], digits=True)
     if "emails" in fields:
         u.emails = _clean_list(fields["emails"], digits=False)
+    marked = 0
+    if "bank_names" in fields:
+        u.bank_names = _clean_names(fields["bank_names"])
+        await session.commit()
+        # transfers to this person recorded before become inside-the-family too
+        marked = await apply_family_names(session)
     await session.commit()
-    return user_out(u)
+    return {**user_out(u), "marked_transfers": marked}
 
 
 @router.delete("/users/{uid}")
@@ -122,6 +155,7 @@ async def delete_user(uid: int, session: AsyncSession = Depends(get_session)):
 class CategoryIn(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     parent_id: int | None = None
+    kind: str = Field("expense", pattern="^(expense|income)$")
 
 
 class CategoryPatch(BaseModel):
@@ -132,10 +166,11 @@ class CategoryPatch(BaseModel):
 @router.get("/categories")
 async def categories(session: AsyncSession = Depends(get_session)):
     rows = await session.scalars(select(Category).order_by(Category.sort_order, Category.id))
-    return [
-        {"id": c.id, "name": c.name, "parent_id": c.parent_id, "sort_order": c.sort_order}
-        for c in rows
-    ]
+    return [cat_out(c) for c in rows]
+
+
+def cat_out(c: Category) -> dict:
+    return {"id": c.id, "name": c.name, "parent_id": c.parent_id, "sort_order": c.sort_order, "kind": c.kind}
 
 
 @router.post("/categories")
@@ -144,15 +179,16 @@ async def create_category(data: CategoryIn, session: AsyncSession = Depends(get_
         parent = await session.get(Category, data.parent_id)
         if not parent or parent.parent_id:
             raise HTTPException(400, "Родителем может быть только категория верхнего уровня")
+        data.kind = parent.kind
     order = await session.scalar(
         select(func.coalesce(func.max(Category.sort_order), 0)).where(
             Category.parent_id.is_(None) if data.parent_id is None else Category.parent_id == data.parent_id
         )
     )
-    c = Category(name=data.name.strip(), parent_id=data.parent_id, sort_order=(order or 0) + 1)
+    c = Category(name=data.name.strip(), parent_id=data.parent_id, sort_order=(order or 0) + 1, kind=data.kind)
     session.add(c)
     await session.commit()
-    return {"id": c.id, "name": c.name, "parent_id": c.parent_id, "sort_order": c.sort_order}
+    return cat_out(c)
 
 
 @router.patch("/categories/{cid}")
@@ -163,7 +199,7 @@ async def patch_category(cid: int, data: CategoryPatch, session: AsyncSession = 
     for k, v in data.model_dump(exclude_unset=True).items():
         setattr(c, k, v.strip() if isinstance(v, str) else v)
     await session.commit()
-    return {"id": c.id, "name": c.name, "parent_id": c.parent_id, "sort_order": c.sort_order}
+    return cat_out(c)
 
 
 @router.delete("/categories/{cid}")
@@ -226,6 +262,8 @@ class RecurringIn(BaseModel):
     user_id: int | None = None
     day_of_month: int = Field(1, ge=1, le=31)
     active: bool = True
+    # expense | income (a salary)
+    kind: str = Field("expense", pattern="^(expense|income)$")
 
 
 def rec_out(r: Recurring) -> dict:
@@ -238,6 +276,7 @@ def rec_out(r: Recurring) -> dict:
         "day_of_month": r.day_of_month,
         "active": r.active,
         "last_booked_month": r.last_booked_month,
+        "kind": r.kind,
     }
 
 

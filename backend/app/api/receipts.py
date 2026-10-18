@@ -4,7 +4,7 @@ from datetime import date, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse, StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
@@ -50,6 +50,11 @@ class ReceiptOut(BaseModel):
     has_image: bool
     note: str | None
     import_id: str | None
+    # expense | income | transfer (inside the family)
+    kind: str
+    counterparty: str | None
+    peer_user_id: int | None
+    peer_name: str | None
     created_at: datetime
 
 
@@ -67,6 +72,12 @@ class ReceiptPatch(BaseModel):
     status: str | None = None
     note: str | None = None
     user_id: int | None = None
+    kind: str | None = Field(None, pattern="^(expense|income|transfer)$")
+    # family member on the other side of a transfer
+    peer_user_id: int | None = None
+    # remember the counterparty as this member's name in the bank: their transfers are always
+    # inside the family, including the ones recorded before
+    remember_peer: bool = False
 
 
 class ItemIn(BaseModel):
@@ -98,10 +109,14 @@ class ManualIn(BaseModel):
     user_id: int | None = None
     purchased_at: datetime | None = None
     store: str | None = None
+    kind: str = Field("expense", pattern="^(expense|income)$")
 
 
 class ReprocessIn(BaseModel):
     model: str | None = None
+
+
+KIND_LABEL = {"expense": "Расход", "income": "Доход", "transfer": "Внутри семьи"}
 
 
 # ---------- helpers ----------
@@ -125,6 +140,10 @@ def to_out(r: Receipt) -> dict:
         has_image=bool(r.image_path),
         note=r.note,
         import_id=r.import_id,
+        kind=r.kind,
+        counterparty=r.counterparty,
+        peer_user_id=r.peer_user_id,
+        peer_name=r.peer.name if r.peer else None,
         created_at=r.created_at,
     )
 
@@ -170,6 +189,8 @@ async def list_receipts(
     category_id: str | None = None,
     # records of one bank statement import
     import_id: str | None = None,
+    # expense | income | transfer
+    kind: str | None = None,
     q: str | None = None,
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=500),
@@ -189,6 +210,8 @@ async def list_receipts(
         conds.append(Receipt.source == source)
     if import_id:
         conds.append(Receipt.import_id == import_id)
+    if kind:
+        conds.append(Receipt.kind == kind)
     if category_id == "none":
         conds.append(Receipt.items.any(Item.category_id.is_(None)))
     elif category_id:
@@ -239,11 +262,22 @@ async def patch_receipt(rid: int, data: ReceiptPatch, session: AsyncSession = De
         raise HTTPException(400, "Неверный статус")
     note = fields.pop("note", None)
     note_given = "note" in data.model_fields_set and (note or None) != r.note
+    kind = fields.pop("kind", None)
+    peer_id = fields.pop("peer_user_id", None)
+    remember = fields.pop("remember_peer", False)
+    svc = ReceiptService(session)
+    if kind:
+        peer = await session.get(User, peer_id) if peer_id else None
+        if kind == "transfer" and peer_id and not peer:
+            raise HTTPException(404, "Член семьи не найден")
+        await svc.set_kind(r, kind, peer)
+        if remember and peer and r.counterparty:
+            await svc.remember_bank_name(peer, r.counterparty)
     for k, v in fields.items():
         setattr(r, k, v)
     if note_given:
         # same as replying to the bot: a one-line record takes the description as its name
-        await ReceiptService(session).set_description(r, note or "")
+        await svc.set_description(r, note or "")
     if fields.get("status") == "ok":
         r.review_reason = None
     await session.commit()
@@ -272,10 +306,16 @@ async def add_manual(
     session: AsyncSession = Depends(get_session),
     viewer: Viewer = Depends(current_viewer),
 ):
-    r = await ReceiptService(session).book_single(
-        name=(data.name or "").strip() or NO_DESCRIPTION,
+    svc = ReceiptService(session)
+    name = (data.name or "").strip() or ("Поступление" if data.kind == "income" else NO_DESCRIPTION)
+    category_id = data.category_id
+    if data.kind == "income" and category_id is None:
+        category_id = await svc.income_category(name)
+    r = await svc.book_single(
+        name=name,
         amount=data.amount,
-        category_id=data.category_id,
+        kind=data.kind,
+        category_id=category_id,
         user_id=data.user_id or viewer.user_id,
         source="manual",
         purchased_at=data.purchased_at,
@@ -369,7 +409,7 @@ async def export_csv(
     w = csv.writer(buf, delimiter=";")
     w.writerow(
         ["Дата", "Магазин", "Кто", "Позиция (оригинал)", "Позиция", "Кол-во", "Цена",
-         "Сумма, €", "Категория", "Подкатегория", "Чек №", "Источник"]
+         "Сумма, €", "Категория", "Подкатегория", "Чек №", "Источник", "Тип"]
     )
     for item, r, user_name, cat, parent in rows:
         w.writerow(
@@ -386,6 +426,7 @@ async def export_csv(
                 cat if parent else "",
                 r.id,
                 r.source,
+                KIND_LABEL.get(r.kind, r.kind),
             ]
         )
     buf.seek(0)

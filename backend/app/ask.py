@@ -51,8 +51,9 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "get_summary",
-            "description": "Итоги за период: всего, по категориям, подкатегориям, людям, магазинам, "
-            "самые затратные товары.",
+            "description": "Итоги за период: расходы всего, по категориям, подкатегориям, людям, "
+            "магазинам, самые затратные товары; income: доходы по категориям; transfers_total: "
+            "переводы внутри семьи (не расход и не доход).",
             "parameters": {"type": "object", "properties": PERIOD},
         },
     },
@@ -60,7 +61,8 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "get_monthly",
-            "description": "Расходы по месяцам и категориям верхнего уровня за последние N месяцев.",
+            "description": "Расходы (total) и доходы (income) по месяцам, расходы по категориям "
+            "верхнего уровня, за последние N месяцев.",
             "parameters": {
                 "type": "object",
                 "properties": {"months": {"type": "integer", "description": "Сколько месяцев, 1–36"},
@@ -80,6 +82,8 @@ TOOLS = [
                 "properties": {
                     "query": {"type": "string", "description": "Слово для поиска"},
                     "category": {"type": "string", "description": "Категория или подкатегория"},
+                    "kind": {"type": "string", "enum": ["expense", "income"],
+                             "description": "expense: покупки (по умолчанию), income: доходы"},
                     **PERIOD,
                 },
             },
@@ -118,8 +122,10 @@ async def tool_get_monthly(session, months=12, person=None):
     return await monthly(session, months, await _person_id(session, person))
 
 
-async def tool_search_purchases(session, query=None, category=None, date_from=None, date_to=None, person=None):
-    conds = [Receipt.status != "failed"]
+async def tool_search_purchases(
+    session, query=None, category=None, date_from=None, date_to=None, person=None, kind=None
+):
+    conds = [Receipt.status != "failed", Receipt.kind == ("income" if kind == "income" else "expense")]
     if query:
         conds.append(
             or_(
@@ -187,7 +193,7 @@ async def answer(session: AsyncSession, question: str, history: list[dict] | Non
     from app.receipts.service import now_local
 
     llm = llm or LLMClient()
-    cats = ", ".join(leaf_categories(list(await session.scalars(select(Category)))))
+    cats = ", ".join(leaf_categories(list(await session.scalars(select(Category).where(Category.kind == "expense")))))
     family = ", ".join(u.name for u in await session.scalars(select(User))) or "нет"
     system = (
         ASK_SYSTEM.replace("{today}", f"{now_local():%Y-%m-%d}")

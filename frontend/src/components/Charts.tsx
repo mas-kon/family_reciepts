@@ -103,6 +103,7 @@ export function MonthlyStack({ rows }: { rows: MonthRow[] }) {
   const p = usePalette()
   const [view, setView] = useState('chart')
 
+  const hasIncome = rows.some((r) => r.income)
   const totals: Record<string, number> = {}
   rows.forEach((r) => Object.entries(r.categories).forEach(([k, v]) => (totals[k] = (totals[k] ?? 0) + v)))
   const ranked = Object.keys(totals).sort((a, b) => totals[b] - totals[a])
@@ -112,7 +113,7 @@ export function MonthlyStack({ rows }: { rows: MonthRow[] }) {
   const color = (k: string) => (k === OTHER ? p.other : p.series[shown.indexOf(k)])
 
   const data = rows.map((r) => {
-    const d: Record<string, number | string> = { month: monthLabel(r.month), total: r.total }
+    const d: Record<string, number | string> = { month: monthLabel(r.month), total: r.total, __income: r.income ?? 0 }
     shown.forEach((k) => (d[k] = r.categories[k] ?? 0))
     if (hasOther) {
       d[OTHER] = Object.entries(r.categories)
@@ -182,6 +183,7 @@ export function MonthlyStack({ rows }: { rows: MonthRow[] }) {
                   </Table.Th>
                 ))}
                 <Table.Th className="num">Всего</Table.Th>
+                {hasIncome && <Table.Th className="num">Доходы</Table.Th>}
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
@@ -196,6 +198,11 @@ export function MonthlyStack({ rows }: { rows: MonthRow[] }) {
                   <Table.Td className="num" fw={600}>
                     {money(Number(d.total))}
                   </Table.Td>
+                  {hasIncome && (
+                    <Table.Td className="num" c="teal">
+                      {Number(d.__income) ? money(Number(d.__income)) : '—'}
+                    </Table.Td>
+                  )}
                 </Table.Tr>
               ))}
             </Table.Tbody>

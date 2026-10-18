@@ -5,11 +5,13 @@ import {
   Badge,
   Button,
   Card,
+  Checkbox,
   Grid,
   Group,
   Loader,
   Modal,
   NumberInput,
+  SegmentedControl,
   Select,
   Stack,
   Switch,
@@ -34,18 +36,20 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import dayjs from 'dayjs'
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { api, type Item, type ReceiptDetail } from '../api'
-import { categoryOptions, dateOnly, dateTime, money, SOURCE_LABEL, sourceLabel, STATUS_LABEL } from '../format'
+import { api, type Item, type Kind, type ReceiptDetail } from '../api'
+import { categoryOptions, dateOnly, dateTime, kindMoney, money, SOURCE_LABEL, sourceLabel, STATUS_LABEL } from '../format'
 import { notifyError, notifyOk, useCategories, useMeta, useUsers } from '../hooks'
 
 type ItemDraft = Pick<Item, 'name_original' | 'name_ru' | 'qty' | 'unit_price' | 'total' | 'warranty_until'>
 
 function ItemRow({
   item,
+  kind,
   remember,
   onSaved,
 }: {
   item: Item
+  kind: Kind
   remember: boolean
   onSaved: (r: ReceiptDetail) => void
 }) {
@@ -74,8 +78,10 @@ function ItemRow({
       searchable
       placeholder="Без категории"
       value={item.category_id ? String(item.category_id) : null}
-      onChange={(v) => v && patch.mutate({ category_id: Number(v), remember })}
-      data={categoryOptions(cats.data ?? [], true)}
+      // the remembered category is a shop product's; incomes are not remembered
+      onChange={(v) => v && patch.mutate({ category_id: Number(v), remember: remember && kind === 'expense' })}
+      data={categoryOptions(cats.data ?? [], true, kind === 'income' ? 'income' : 'expense')}
+      disabled={kind === 'transfer'}
       allowDeselect={false}
       w={200}
       aria-label="Категория"
@@ -155,6 +161,81 @@ function ItemRow({
         </Group>
       </Table.Td>
     </Table.Tr>
+  )
+}
+
+/** Expense / income / transfer inside the family. A transfer asks for the family member and
+ * can remember the bank's name for them, so their transfers are never counted as spending. */
+function KindControl({ r, onSaved }: { r: ReceiptDetail; onSaved: (r: ReceiptDetail) => void }) {
+  const users = useUsers()
+  const qc = useQueryClient()
+  const [asking, setAsking] = useState(false)
+  const [peer, setPeer] = useState<string | null>(r.peer_user_id ? String(r.peer_user_id) : null)
+  const [rememberPeer, setRememberPeer] = useState(true)
+  const save = useMutation({
+    mutationFn: (body: { kind: Kind; peer_user_id?: number | null; remember_peer?: boolean }) =>
+      api<ReceiptDetail>(`/receipts/${r.id}`, { method: 'PATCH', json: body }),
+    onSuccess: (x, body) => {
+      setAsking(false)
+      onSaved(x)
+      qc.invalidateQueries()
+      if (body.remember_peer) notifyOk(`Переводы «${r.counterparty}» теперь всегда внутри семьи`)
+    },
+    onError: notifyError,
+  })
+  return (
+    <>
+      <SegmentedControl
+        size="xs"
+        value={r.kind}
+        onChange={(v) => (v === 'transfer' ? setAsking(true) : save.mutate({ kind: v as Kind }))}
+        data={[
+          { value: 'expense', label: 'Расход' },
+          { value: 'income', label: 'Доход' },
+          { value: 'transfer', label: 'Внутри семьи' },
+        ]}
+      />
+      <Modal opened={asking} onClose={() => setAsking(false)} title="Перевод внутри семьи">
+        <Stack>
+          <Text size="sm">
+            Деньги остались в семье: такой перевод не войдёт ни в расходы, ни в доходы. Например, карманные деньги
+            ребёнку: он потратит их сам, и эти траты уже будут учтены.
+          </Text>
+          <Select
+            label="Кому или от кого"
+            placeholder="Член семьи"
+            value={peer}
+            onChange={setPeer}
+            data={(users.data ?? []).map((u) => ({ value: String(u.id), label: u.name }))}
+            data-autofocus
+          />
+          {r.counterparty && (
+            <Checkbox
+              checked={rememberPeer}
+              onChange={(e) => setRememberPeer(e.currentTarget.checked)}
+              label={`Запомнить: «${r.counterparty}» это этот член семьи. Его переводы, прошлые и будущие, будут внутри семьи.`}
+            />
+          )}
+          <Group justify="flex-end">
+            <Button variant="default" onClick={() => setAsking(false)}>
+              Отмена
+            </Button>
+            <Button
+              loading={save.isPending}
+              onClick={() =>
+                save.mutate({
+                  kind: 'transfer',
+                  peer_user_id: peer ? Number(peer) : null,
+                  remember_peer: !!(peer && r.counterparty && rememberPeer),
+                })
+              }
+            >
+              Сохранить
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+    </>
   )
 }
 
@@ -316,9 +397,21 @@ export default function ReceiptDetailPage() {
               ) : (
                 <Group justify="space-between" align="flex-start">
                   <Stack gap={2}>
-                    <Text fz={26} fw={700} className="num" ta="left">
-                      {money(r.total)}
+                    <Text
+                      fz={26}
+                      fw={700}
+                      className="num"
+                      ta="left"
+                      c={r.kind === 'income' ? 'teal' : r.kind === 'transfer' ? 'dimmed' : undefined}
+                    >
+                      {kindMoney(r.kind, r.total)}
                     </Text>
+                    <KindControl r={r} onSaved={update} />
+                    {r.kind === 'transfer' && (
+                      <Text size="sm" c="dimmed">
+                        Перевод внутри семьи{r.peer_name ? `: ${r.peer_name}` : ''}. В расходы и доходы не входит.
+                      </Text>
+                    )}
                     <Text size="sm">{dateTime(r.purchased_at)}</Text>
                     <Text size="sm" c="dimmed">
                       {r.user_name ?? 'Кто — не указано'} · {sourceLabel(r)}
@@ -363,7 +456,7 @@ export default function ReceiptDetailPage() {
                   </Table.Thead>
                   <Table.Tbody>
                     {r.items.map((it) => (
-                      <ItemRow key={`${it.id}-${it.total}-${it.name_original}`} item={it} remember={remember} onSaved={update} />
+                      <ItemRow key={`${it.id}-${it.total}-${it.name_original}-${r.kind}`} item={it} kind={r.kind} remember={remember} onSaved={update} />
                     ))}
                   </Table.Tbody>
                   <Table.Tfoot>

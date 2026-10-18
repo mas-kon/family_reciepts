@@ -10,6 +10,16 @@ import { notifyError, notifyOk, useUsers } from '../hooks'
 
 interface Row extends StatementTx {
   selected: boolean
+  /** "expense", "income" or "transfer:<member id>" */
+  choice: string
+}
+
+const OUTGOING = new Set(['purchase', 'transfer_out'])
+
+function initialChoice(t: StatementTx): string {
+  if (t.kind === 'transfer') return t.peer_id ? `transfer:${t.peer_id}` : 'expense'
+  if (t.kind) return t.kind
+  return OUTGOING.has(t.type ?? '') ? 'expense' : 'income'
 }
 
 export default function BankImport() {
@@ -25,23 +35,33 @@ export default function BankImport() {
       fd.append('file', file)
       return api<{ transactions: StatementTx[] }>('/bank/statement', { method: 'POST', body: fd })
     },
-    // by default only expenses that are not recorded yet are selected
-    onSuccess: (r) => setRows(r.transactions.map((t) => ({ ...t, selected: !t.match && !t.imported }))),
+    // by default everything not recorded yet is selected, except moves between own accounts
+    onSuccess: (r) =>
+      setRows(
+        r.transactions.map((t) => ({ ...t, choice: initialChoice(t), selected: !t.match && !t.imported && t.kind !== null })),
+      ),
     onError: notifyError,
   })
 
   const importRows = useMutation({
     mutationFn: () =>
-      api<{ booked: number; skipped: number }>('/bank/import', {
+      api<{ booked: number; skipped: number; marked_transfers: number }>('/bank/import', {
         method: 'POST',
         json: {
-          transactions: (rows ?? []).filter((r) => r.selected).map(({ date, amount, merchant, card, owner_id }) => ({
-            date, amount, merchant, card, owner_id,
-          })),
+          transactions: (rows ?? [])
+            .filter((r) => r.selected)
+            .map(({ date, amount, merchant, card, owner_id, type, counterparty, choice }) => ({
+              date, amount, merchant, card, owner_id, type, counterparty,
+              kind: choice.startsWith('transfer:') ? 'transfer' : choice,
+              peer_id: choice.startsWith('transfer:') ? Number(choice.split(':')[1]) : null,
+            })),
         },
       }),
     onSuccess: (r) => {
-      notifyOk(`Записано: ${r.booked}${r.skipped ? `, уже были: ${r.skipped}` : ''}`)
+      notifyOk(
+        `Записано: ${r.booked}${r.skipped ? `, уже были: ${r.skipped}` : ''}` +
+          (r.marked_transfers ? `. Прошлых переводов внутри семьи найдено: ${r.marked_transfers}` : ''),
+      )
       qc.invalidateQueries()
       setRows((rs) => rs?.map((x) => (x.selected ? { ...x, selected: false, imported: true } : x)) ?? null)
     },
@@ -52,15 +72,25 @@ export default function BankImport() {
     setRows((rs) => rs?.map((r, j) => (j === i ? { ...r, ...patch } : r)) ?? null)
 
   const selected = rows?.filter((r) => r.selected) ?? []
-  const missing = rows?.filter((r) => !r.match && !r.imported).length ?? 0
+  const missing = rows?.filter((r) => !r.match && !r.imported && r.kind !== null).length ?? 0
+  const typeOptions = [
+    { value: 'expense', label: 'Расход' },
+    { value: 'income', label: 'Доход' },
+    ...(users.data ?? []).map((u) => ({ value: `transfer:${u.id}`, label: `Семья: ${u.name}` })),
+  ]
 
   return (
     <Stack>
       <Title order={2}>Выписка из банка</Title>
       <Text size="sm" c="dimmed">
-        Загрузите выписку в CSV или PDF. Нейросеть найдёт в ней списания и сравнит с уже записанными тратами: такая же
-        сумма в пределах двух дней считается той же покупкой. Ничего не сохраняется, пока вы не нажмёте «Записать».
+        Загрузите выписку в CSV или PDF. Нейросеть найдёт в ней расходы и доходы и сравнит с уже записанными: такая же
+        сумма в пределах двух дней считается той же операцией. Ничего не сохраняется, пока вы не нажмёте «Записать».
         Владелец определяется по последним цифрам карты, их можно указать в Настройках → Семья.
+      </Text>
+      <Text size="sm" c="dimmed">
+        Перевод члену семьи отметьте как «Семья: имя». Он не войдёт ни в расходы, ни в доходы, а имя из банка
+        запомнится: следующие переводы этому человеку определятся сами. Переводы между своими счетами и пополнения со
+        своей карты по умолчанию не отмечены.
       </Text>
 
       <Group>
@@ -79,9 +109,9 @@ export default function BankImport() {
       {rows && rows.length > 0 && (
         <>
           <Text size="sm">
-            Списаний: {rows.length}, не записано: <b>{missing}</b>.
+            Операций: {rows.length}, не записано: <b>{missing}</b>.
           </Text>
-          <Table.ScrollContainer minWidth={760}>
+          <Table.ScrollContainer minWidth={920}>
             <Table verticalSpacing="xs" fz="sm">
               <Table.Thead>
                 <Table.Tr>
@@ -89,6 +119,7 @@ export default function BankImport() {
                   <Table.Th>Дата</Table.Th>
                   <Table.Th>Где</Table.Th>
                   <Table.Th className="num">Сумма</Table.Th>
+                  <Table.Th>Тип</Table.Th>
                   <Table.Th>Кто</Table.Th>
                   <Table.Th>Уже записано</Table.Th>
                 </Table.Tr>
@@ -114,7 +145,26 @@ export default function BankImport() {
                         </Text>
                       )}
                     </Table.Td>
-                    <Table.Td className="num">{money(r.amount)}</Table.Td>
+                    <Table.Td className="num" c={r.choice === 'income' ? 'teal' : undefined}>
+                      {r.choice === 'income' ? `+${money(r.amount)}` : money(r.amount)}
+                    </Table.Td>
+                    <Table.Td>
+                      <Select
+                        size="xs"
+                        w={150}
+                        value={r.choice}
+                        onChange={(v) => v && update(i, { choice: v })}
+                        data={typeOptions}
+                        allowDeselect={false}
+                        disabled={r.imported}
+                        aria-label="Тип"
+                      />
+                      {r.kind === null && (
+                        <Text size="xs" c="dimmed">
+                          между своими счетами
+                        </Text>
+                      )}
+                    </Table.Td>
                     <Table.Td>
                       <Select
                         size="xs"

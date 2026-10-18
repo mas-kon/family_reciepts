@@ -19,7 +19,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { api, qs, type Receipt } from '../api'
 import { ManualExpenseModal } from '../components/ManualExpenseModal'
 import { DeleteImportButton } from '../components/DeleteImportButton'
-import { categoryOptions, dateTime, money, SOURCE_LABEL, sourceLabel, STATUS_LABEL } from '../format'
+import { categoryOptions, dateTime, KIND_LABEL, kindMoney, SOURCE_LABEL, sourceLabel, STATUS_LABEL } from '../format'
 import { useCategories, useUsers } from '../hooks'
 
 const PAGE = 50
@@ -51,6 +51,7 @@ export default function Receipts() {
     date_from: get('date_from'),
     date_to: get('date_to'),
     import_id: get('import_id'),
+    kind: get('kind'),
     page,
     page_size: PAGE,
   }
@@ -114,6 +115,14 @@ export default function Receipts() {
           data={Object.entries(STATUS_LABEL).map(([value, s]) => ({ value, label: s.label }))}
         />
         <Select
+          placeholder="Тип"
+          clearable
+          w={150}
+          value={get('kind') || null}
+          onChange={(v) => set('kind', v)}
+          data={Object.entries(KIND_LABEL).map(([value, label]) => ({ value, label }))}
+        />
+        <Select
           placeholder="Источник"
           clearable
           w={140}
@@ -173,12 +182,20 @@ export default function Receipts() {
                             {sourceLabel(r)}
                           </Badge>
                         )}
+                        {r.kind !== 'expense' && (
+                          <Badge size="xs" variant="light" color={r.kind === 'income' ? 'teal' : 'grape'}>
+                            {r.kind === 'transfer' && r.peer_name ? `Семья → ${r.peer_name}` : KIND_LABEL[r.kind]}
+                          </Badge>
+                        )}
                       </Group>
                     </Table.Td>
                     <Table.Td>{r.user_name ?? '—'}</Table.Td>
                     <Table.Td className="num">{r.items_count}</Table.Td>
-                    <Table.Td className="num">
-                      {money(r.total)}
+                    <Table.Td
+                      className="num"
+                      c={r.kind === 'income' ? 'teal' : r.kind === 'transfer' ? 'dimmed' : undefined}
+                    >
+                      {kindMoney(r.kind, r.total)}
                     </Table.Td>
                     <Table.Td>
                       <Badge color={STATUS_LABEL[r.status]?.color} variant="light">

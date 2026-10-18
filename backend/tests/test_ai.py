@@ -135,11 +135,15 @@ def test_parse_mail_html_body():
 async def test_mail_owner_by_address(session):
     from app.email_inbox import ParsedMail, process_mail
 
-    session.add(User(name="Анна", emails="anna@example.com"))
+    session.add(User(name="Анна", emails="anna@example.com,anna.work@company.bg"))
     await session.commit()
     mail = ParsedMail(message_id="<m1>", sender="anna@example.com", subject="Заказ", text="Пицца 12.50")
     r = (await process_mail(ReceiptService(session, FakeLLM(LIDL)), mail)).receipt
     assert (await session.get(User, r.user_id)).name == "Анна" and r.external_id == "email:<m1>"
+    # any of the person's addresses
+    mail = ParsedMail(message_id="<m2>", sender="anna.work@company.bg", subject="Заказ", text="Кафе 4.20")
+    r = (await process_mail(ReceiptService(session, FakeLLM(LIDL)), mail)).receipt
+    assert (await session.get(User, r.user_id)).name == "Анна"
 
 
 # ---------- bank ----------
@@ -218,7 +222,7 @@ async def test_statement_analyse_and_import(client, session):
         imp = (await client.post("/api/bank/import", json={"transactions": [rows[0]]})).json()
         assert imp["booked"] == 1 and imp["skipped"] == 0 and imp["import_id"]
         again = await client.post("/api/bank/import", json={"transactions": [rows[0]]})
-        assert again.json() == {"booked": 0, "skipped": 1, "import_id": None}
+        assert again.json() == {"booked": 0, "skipped": 1, "import_id": None, "marked_transfers": 0}
 
         # the whole statement can be listed and deleted at once; other records stay
         imports = (await client.get("/api/bank/imports")).json()
@@ -377,3 +381,99 @@ async def test_voice_without_speech_or_expense_books_nothing(session):
         res = await handle_voice(ReceiptService(session, FakeLLM(voice=answer)), b"wav", None)
         assert res.receipt is None
     assert await session.scalar(select(func.count(Receipt.id))) == 0
+
+
+# ---------- income and transfers inside the family ----------
+
+
+async def test_family_transfer_is_not_spending(session, client):
+    import datetime as dt
+
+    vera = User(name="Вера")
+    session.add(vera)
+    await session.commit()
+    svc = ReceiptService(session, FakeLLM(None))
+    when = dt.datetime(2026, 10, 5, 12)
+    await svc.book_single(name="Хлеб", amount=10, category_id=None, user_id=None, source="manual", purchased_at=when)
+    t1 = await svc.book_single(name="Перевод: Vera Maslennikova", amount=4, category_id=None, user_id=None,
+                               source="bank", purchased_at=when, counterparty="Vera Maslennikova")
+    t2 = await svc.book_single(name="Перевод: Vera Maslennikova", amount=3, category_id=None, user_id=None,
+                               source="bank", purchased_at=when, counterparty="Vera Maslennikova")
+    sal = (await client.post("/api/receipts/manual", json={
+        "name": "Зарплата", "amount": 1500, "kind": "income", "purchased_at": "2026-10-05T09:00:00"})).json()
+    assert sal["kind"] == "income"
+
+    period = "date_from=2026-10-01&date_to=2026-10-31"
+    s = (await client.get(f"/api/stats/summary?{period}")).json()
+    assert s["total"] == 17 and s["income"]["total"] == 1500
+
+    # one record marked with "remember" marks every transfer to this name
+    r = (await client.patch(f"/api/receipts/{t1.id}", json={"kind": "transfer", "peer_user_id": vera.id,
+                                                           "remember_peer": True})).json()
+    assert r["kind"] == "transfer" and r["peer_name"] == "Вера"
+    session.expunge_all()
+    assert (await session.get(Receipt, t2.id)).kind == "transfer"
+    assert (await session.get(User, vera.id)).bank_names == "Vera Maslennikova"
+    s = (await client.get(f"/api/stats/summary?{period}")).json()
+    assert s["total"] == 10 and s["transfers_total"] == 7 and s["income"]["total"] == 1500
+    month = next(m for m in (await client.get("/api/stats/monthly?months=24")).json() if m["month"] == "2026-10")
+    assert month["total"] == 10 and month["income"] == 1500
+
+
+# ---------- LLM usage and balance ----------
+
+
+class _Usage:
+    def __init__(self, d):
+        self.d = d
+
+    def model_dump(self):
+        return self.d
+
+
+class _Resp:
+    def __init__(self, provider, cost, upstream, byok):
+        self.provider = provider
+        self.usage = _Usage({"prompt_tokens": 100, "completion_tokens": 20, "cost": cost, "is_byok": byok,
+                             "cost_details": {"upstream_inference_cost": upstream}})
+
+
+async def test_llm_usage_log_and_report(session, client):
+    from app.llm.usage import record_call
+
+    await record_call("receipt", "google/gemini-2.5-flash", _Resp("Google", 0.002, 0.002, False))
+    await record_call("receipt", "google/gemini-2.5-flash", _Resp("Google AI Studio", 0.0, 0.003, True))
+    await record_call("bank", "deepseek/deepseek-v4.1-flash", None, error=RuntimeError("429 rate limited"))
+
+    r = (await client.get("/api/llm/usage?days=7")).json()
+    assert r["total"]["calls"] == 3 and r["total"]["failed"] == 1
+    assert round(r["total"]["cost"], 4) == 0.002 and round(r["total"]["byok_cost"], 4) == 0.003
+    receipt = next(t for t in r["by_task"] if t["task"] == "receipt")
+    assert receipt["label"] == "Чеки по фото" and receipt["calls"] == 2 and receipt["byok_calls"] == 1
+    assert {m["provider"] for m in r["by_model"]} == {"Google", "Google AI Studio", None}
+
+
+async def test_low_balance_warns_once(monkeypatch):
+    from app.llm import usage
+
+    class Bot:
+        sent: list = []
+
+        async def send_message(self, chat, text):
+            self.sent.append(text)
+
+    state = {"balance": 0.4}
+
+    async def fake_balances(fresh=False):
+        return [{"provider": "OpenRouter", "currency": "USD", "balance": state["balance"],
+                 "key": {"limit": 5, "limit_remaining": 4.9}}]
+
+    monkeypatch.setattr(usage, "balances", fake_balances)
+    monkeypatch.setattr(get_settings(), "report_chat_id", -100)
+    bot = Bot()
+    assert await usage.check_balance(bot) == ["OpenRouter: на счёте осталось 0.40$"]
+    assert await usage.check_balance(bot) == []  # already warned
+    state["balance"] = 7
+    assert await usage.check_balance(bot) == []
+    state["balance"] = 0.2  # topped up and spent again: warns again
+    assert len(await usage.check_balance(bot)) == 1 and len(bot.sent) == 2

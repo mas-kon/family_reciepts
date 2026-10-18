@@ -33,6 +33,9 @@ class User(Base):
     cards: Mapped[str | None] = mapped_column(String(200))
     # e-mail addresses, comma-separated: receipts sent from them are booked for this person
     emails: Mapped[str | None] = mapped_column(String(300))
+    # how the bank writes this person in transfers ("Vera Maslennikova"), comma-separated:
+    # money sent to or received from them is moved inside the family, not spent or earned
+    bank_names: Mapped[str | None] = mapped_column(String(500))
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
 
@@ -44,6 +47,8 @@ class Category(Base):
     name: Mapped[str] = mapped_column(String(100))
     parent_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id", ondelete="RESTRICT"))
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    # expense | income
+    kind: Mapped[str] = mapped_column(String(10), default="expense", server_default="expense")
 
     parent: Mapped["Category | None"] = relationship(remote_side=[id], lazy="joined")
 
@@ -55,6 +60,12 @@ class Receipt(Base):
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     # photo | manual | recurring | bank | voice | email
     source: Mapped[str] = mapped_column(String(20), default="photo")
+    # expense | income | transfer (money moved inside the family: counted neither as spent nor earned)
+    kind: Mapped[str] = mapped_column(String(10), default="expense", server_default="expense", index=True)
+    # the other person of a bank transfer, as the bank writes it
+    counterparty: Mapped[str | None] = mapped_column(String(200))
+    # family member on the other side of an inside-the-family transfer
+    peer_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     store: Mapped[str | None] = mapped_column(String(200))
     purchased_at: Mapped[datetime | None] = mapped_column(DateTime, index=True)
     total: Mapped[float | None] = mapped_column(Float)  # EUR
@@ -79,7 +90,8 @@ class Receipt(Base):
     bot_message_id: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
-    user: Mapped[User | None] = relationship(lazy="joined")
+    user: Mapped[User | None] = relationship(lazy="joined", foreign_keys=[user_id])
+    peer: Mapped[User | None] = relationship(lazy="joined", foreign_keys=[peer_user_id])
     items: Mapped[list["Item"]] = relationship(
         back_populates="receipt",
         cascade="all, delete-orphan",
@@ -172,8 +184,33 @@ class Recurring(Base):
     category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id", ondelete="SET NULL"))
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     day_of_month: Mapped[int] = mapped_column(Integer, default=1)
+    # expense | income (a salary)
+    kind: Mapped[str] = mapped_column(String(10), default="expense", server_default="expense")
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     last_booked_month: Mapped[str | None] = mapped_column(String(7))
 
     category: Mapped[Category | None] = relationship(lazy="joined")
     user: Mapped[User | None] = relationship(lazy="joined")
+
+
+class LLMCall(Base):
+    """One request to the LLM provider: what it was for, who served it and what it cost."""
+
+    __tablename__ = "llm_calls"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, index=True)  # local time
+    # receipt | receipt_text | manual | bank | voice | products | comment | ask | other
+    task: Mapped[str] = mapped_column(String(20))
+    model: Mapped[str] = mapped_column(String(200))
+    # provider that served it, as OpenRouter reports ("Google", "Together", "DeepSeek")
+    provider: Mapped[str | None] = mapped_column(String(100))
+    prompt_tokens: Mapped[int | None] = mapped_column(Integer)
+    completion_tokens: Mapped[int | None] = mapped_column(Integer)
+    # USD charged to the OpenRouter balance (for a BYOK request, only OpenRouter's fee)
+    cost: Mapped[float | None] = mapped_column(Float)
+    # USD the provider charges for the request; with BYOK it goes to your own provider key
+    upstream_cost: Mapped[float | None] = mapped_column(Float)
+    is_byok: Mapped[bool] = mapped_column(Boolean, default=False)
+    ok: Mapped[bool] = mapped_column(Boolean, default=True)
+    error: Mapped[str | None] = mapped_column(String(300))

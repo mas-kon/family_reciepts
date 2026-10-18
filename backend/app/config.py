@@ -66,6 +66,12 @@ class Settings(BaseSettings):
     imap_folder: str = "INBOX"
     imap_poll_minutes: int = 10
 
+    # --- LLM balance ---
+    # warn in the group when the OpenRouter balance or the key's limit drops below this, USD; 0 = off
+    llm_balance_alert: float = 1.0
+    # DeepSeek's own API key, only to show its balance (requests go through LLM_BASE_URL)
+    deepseek_api_key: str = ""
+
     # --- Warranty ---
     # remind in the group this many days before a warranty ends
     warranty_remind_days: int = 30

@@ -66,6 +66,25 @@ def parse_manual_text(text: str) -> tuple[str | None, float] | None:
     return name, float(m["amount"].replace(",", "."))
 
 
+_INCOME_RULES = [
+    (re.compile(r"зарплат|заплата|аванс|salary|payroll|wage", re.I), "Зарплата"),
+    (re.compile(r"возврат|refund|return|възстановен|върнат", re.I), "Возвраты"),
+    (re.compile(r"кэшбэк|кешбэк|кешбек|cashback|cash back|процент|лихв|interest", re.I), "Проценты и кэшбэк"),
+    (re.compile(r"подработ|фриланс|freelance|гонорар|хонорар", re.I), "Подработка"),
+    (re.compile(r"подар|помощ|gift", re.I), "Подарки и помощь"),
+]
+
+
+def income_category_name(name: str) -> str:
+    """Income category by keywords; there are few incomes, an LLM call is not worth it."""
+    for rx, cat in _INCOME_RULES:
+        if rx.search(name or ""):
+            return cat
+    from app.db.seed import INCOME_OTHER
+
+    return INCOME_OTHER
+
+
 def split_who(text: str) -> tuple[str | None, str]:
     """'Маша: кино 12' -> ('Маша', 'кино 12'); '@masha: 12' -> ('@masha', '12')."""
     m = _WHO_RE.match((text or "").strip())
@@ -137,8 +156,14 @@ class ReceiptService:
         return await find_user(self.session, token)
 
     async def matcher(self) -> CategoryMatcher:
-        cats = list(await self.session.scalars(select(Category)))
+        cats = list(await self.session.scalars(select(Category).where(Category.kind == "expense")))
         return CategoryMatcher(cats)
+
+    async def income_category(self, name: str) -> int | None:
+        target = income_category_name(name)
+        return await self.session.scalar(
+            select(Category.id).where(Category.kind == "income", Category.name == target)
+        )
 
     async def overrides(self, names: set[str]) -> dict[str, int]:
         if not names:
@@ -463,9 +488,15 @@ class ReceiptService:
         message_id: int | None = None,
         external_id: str | None = None,
         import_id: str | None = None,
+        kind: str = "expense",
+        counterparty: str | None = None,
+        peer_user_id: int | None = None,
     ) -> Receipt:
         receipt = Receipt(
             source=source,
+            kind=kind,
+            counterparty=counterparty,
+            peer_user_id=peer_user_id,
             external_id=external_id,
             import_id=import_id,
             status="ok",
@@ -492,6 +523,29 @@ class ReceiptService:
         self.session.add(receipt)
         await self.session.commit()
         return receipt
+
+    async def add_income_text(
+        self,
+        text: str,
+        user: User | None,
+        chat_id: int | None = None,
+        message_id: int | None = None,
+    ) -> Receipt | None:
+        """'зарплата 1500' -> income record. None when there is no amount."""
+        quick = parse_manual_text(text)
+        if not quick:
+            return None
+        name = quick[0] or "Поступление"
+        return await self.book_single(
+            name=name,
+            amount=quick[1],
+            category_id=await self.income_category(name),
+            user_id=user.id if user else None,
+            source="manual",
+            kind="income",
+            chat_id=chat_id,
+            message_id=message_id,
+        )
 
     async def add_manual_text(
         self,
@@ -562,7 +616,13 @@ class ReceiptService:
         text = text.strip()
         receipt.note = text or None
         items = await receipt.awaitable_attrs.items
-        if text and len(items) == 1 and (
+        if text and len(items) == 1 and receipt.kind == "income":
+            it = items[0]
+            if it.name_original in {NO_DESCRIPTION, "Поступление"}:
+                it.name_original = it.name_ru = text[:300]
+                it.name_normalized = normalize_name(text)
+                it.category_id = await self.income_category(text)
+        elif text and len(items) == 1 and receipt.kind == "expense" and (
             items[0].category_id is None or items[0].name_original in {NO_DESCRIPTION, "Покупка", receipt.store}
         ):
             it = items[0]
@@ -573,6 +633,29 @@ class ReceiptService:
         return receipt
 
     # ---------- edits from the web ----------
+
+    async def set_kind(self, receipt: Receipt, kind: str, peer: User | None = None) -> None:
+        """Expense, income or a transfer inside the family. Categories of the other kind are
+        dropped, an income gets an income category."""
+        receipt.kind = kind
+        receipt.peer_user_id = peer.id if kind == "transfer" and peer else None
+        cat_kind = {c.id: c.kind for c in await self.session.scalars(select(Category))}
+        for it in await receipt.awaitable_attrs.items:
+            if kind == "transfer" or (it.category_id and cat_kind.get(it.category_id) != kind):
+                it.category_id = None
+            if kind == "income" and it.category_id is None:
+                it.category_id = await self.income_category(it.name_original)
+        await self.session.commit()
+
+    async def remember_bank_name(self, member: User, name: str) -> int:
+        """Transfers to/from this name are inside the family from now on, recorded ones too."""
+        from app.bank import apply_family_names
+
+        names = [n.strip() for n in (member.bank_names or "").split(",") if n.strip()]
+        if normalize_name(name) not in {normalize_name(n) for n in names}:
+            member.bank_names = ",".join([*names, name.strip()])
+            await self.session.commit()
+        return await apply_family_names(self.session)
 
     async def remember_category(self, name_normalized: str, category_id: int, apply_existing: bool):
         ov = await self.session.scalar(

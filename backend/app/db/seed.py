@@ -39,8 +39,16 @@ DEFAULT_CATEGORIES: dict[str, list[str]] = {
 }
 
 
+INCOME_OTHER = "Прочие доходы"
+INCOME_CATEGORIES = ["Зарплата", "Подработка", "Подарки и помощь", "Возвраты", "Проценты и кэшбэк", INCOME_OTHER]
+
+
 async def seed_categories(session: AsyncSession) -> None:
-    count = await session.scalar(select(func.count(Category.id)))
+    if not await session.scalar(select(func.count(Category.id)).where(Category.kind == "income")):
+        for i, name in enumerate(INCOME_CATEGORIES):
+            session.add(Category(name=name, kind="income", sort_order=100 + i))
+        await session.commit()
+    count = await session.scalar(select(func.count(Category.id)).where(Category.kind == "expense"))
     if count:
         return
     for i, (parent_name, children) in enumerate(DEFAULT_CATEGORIES.items()):

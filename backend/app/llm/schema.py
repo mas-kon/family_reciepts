@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 def _to_float(v):
@@ -87,13 +87,33 @@ def _to_dt(v):
     return None
 
 
+BANK_TX_TYPES = {"purchase", "income", "transfer_out", "transfer_in", "own"}
+
+
 class ParsedBankTx(BaseModel):
     amount: float
     merchant: str | None = None
     date: datetime | None = None
     # last 4 digits of the card, if the message shows them
     card: str | None = None
-    is_expense: bool = True
+    # purchase: money spent (shop, service, fee, cash); income: salary, refund, money from an
+    # organisation; transfer_out / transfer_in: money sent to / received from a person;
+    # own: between own accounts or a top-up from an own card, neither spent nor earned
+    type: str | None = None
+    # person of a transfer, as the bank writes them
+    counterparty: str | None = None
+    # older answers had only this flag
+    is_expense: bool | None = None
+
+    @model_validator(mode="after")
+    def _type(self):
+        if self.type not in BANK_TX_TYPES:
+            self.type = "purchase" if self.is_expense is not False else "own"
+        return self
+
+    @property
+    def outgoing(self) -> bool:
+        return self.type in {"purchase", "transfer_out"}
 
     _num = field_validator("amount", mode="before")(lambda v: abs(_to_float(v) or 0))
     _dt = field_validator("date", mode="before")(lambda v: _to_dt(v))

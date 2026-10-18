@@ -1,4 +1,7 @@
-"""Aggregations over items. All amounts are in EUR."""
+"""Aggregations over items. All amounts are in EUR.
+
+Spending counts only records of kind "expense": incomes are summed separately and transfers
+inside the family are counted nowhere (they are only moved money)."""
 
 from datetime import date, datetime, timedelta
 
@@ -31,8 +34,9 @@ def _filtered(
     date_from: datetime | None,
     date_to: datetime | None,
     user_id: int | None = None,
+    kind: str = "expense",
 ) -> Select:
-    conds = [Receipt.status != "failed"]
+    conds = [Receipt.status != "failed", Receipt.kind == kind]
     if date_from:
         conds.append(Receipt.purchased_at >= date_from)
     if date_to:
@@ -148,6 +152,11 @@ async def summary(
         .limit(top)
     )
 
+    income = await income_summary(session, date_from, date_to, user_id)
+    transfers = await session.scalar(
+        _filtered(select(func.coalesce(func.sum(Receipt.total), 0)), date_from, date_to, user_id, kind="transfer")
+    )
+
     def rows(res):
         return [
             {k: (round(v, 2) if isinstance(v, float) else v) for k, v in r._mapping.items()}
@@ -162,7 +171,32 @@ async def summary(
         "by_user": rows(by_user),
         "by_store": rows(by_store),
         "top_items": rows(top_items),
+        "income": income,
+        "transfers_total": round(transfers or 0, 2),
     }
+
+
+async def income_summary(
+    session: AsyncSession, date_from: datetime | None, date_to: datetime | None, user_id: int | None = None
+) -> dict:
+    by_cat = await session.execute(
+        _filtered(
+            select(
+                func.coalesce(Category.name, "Без категории").label("name"),
+                func.sum(EUR).label("amount"),
+            )
+            .select_from(Item).join(Receipt, Item.receipt_id == Receipt.id)
+            .outerjoin(Category, Item.category_id == Category.id),
+            date_from,
+            date_to,
+            user_id,
+            kind="income",
+        )
+        .group_by(func.coalesce(Category.name, "Без категории"))
+        .order_by(func.sum(EUR).desc())
+    )
+    cats = [{"name": r.name, "amount": round(r.amount, 2)} for r in by_cat]
+    return {"total": round(sum(c["amount"] for c in cats), 2), "by_category": cats}
 
 
 async def monthly(session: AsyncSession, months: int = 12, user_id: int | None = None) -> list[dict]:
@@ -191,9 +225,20 @@ async def monthly(session: AsyncSession, months: int = 12, user_id: int | None =
             user_id,
         ).group_by(month_expr, func.coalesce(Parent.name, Category.name, "Без категории"))
     )
+    incomes = await session.execute(
+        _filtered(
+            select(month_expr.label("month"), func.sum(Receipt.total).label("amount")),
+            start,
+            None,
+            user_id,
+            kind="income",
+        ).group_by(month_expr)
+    )
     by_month: dict[str, dict] = {}
+    for r in incomes:
+        by_month[r.month] = {"month": r.month, "total": 0.0, "income": round(r.amount or 0, 2), "categories": {}}
     for r in res:
-        row = by_month.setdefault(r.month, {"month": r.month, "total": 0.0, "categories": {}})
+        row = by_month.setdefault(r.month, {"month": r.month, "total": 0.0, "income": 0.0, "categories": {}})
         row["categories"][r.category] = round(r.amount, 2)
         row["total"] = round(row["total"] + r.amount, 2)
     # fill gaps so charts have a continuous axis
@@ -201,7 +246,7 @@ async def monthly(session: AsyncSession, months: int = 12, user_id: int | None =
     cy, cm = y, m
     for _ in range(months):
         key = f"{cy:04d}-{cm:02d}"
-        out.append(by_month.get(key, {"month": key, "total": 0.0, "categories": {}}))
+        out.append(by_month.get(key, {"month": key, "total": 0.0, "income": 0.0, "categories": {}}))
         cm += 1
         if cm > 12:
             cm, cy = 1, cy + 1

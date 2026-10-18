@@ -71,21 +71,31 @@ class LLMClient:
             default_headers={"X-Title": "check-bot"},
         )
 
-    async def _ask(self, model: str, messages: list[dict]) -> str:
-        resp = await self.client.chat.completions.create(
-            model=model, messages=messages, temperature=0
-        )
+    async def _create(self, task: str, model: str, **kwargs):
+        """One request; every attempt, failed or not, goes to the usage log (app.llm.usage)."""
+        from app.llm.usage import record_call
+
+        try:
+            resp = await self.client.chat.completions.create(model=model, temperature=0, **kwargs)
+        except Exception as e:
+            await record_call(task, model, None, error=e)
+            raise
+        await record_call(task, model, resp)
+        return resp
+
+    async def _ask(self, model: str, messages: list[dict], task: str = "other") -> str:
+        resp = await self._create(task, model, messages=messages)
         if not resp.choices:
             raise LLMError("no choices in response")
         return resp.choices[0].message.content or ""
 
     async def structured(
-        self, messages: list[dict], schema: type[T], models: list[str]
+        self, messages: list[dict], schema: type[T], models: list[str], task: str = "other"
     ) -> LLMResult[T]:
         errors: list[str] = []
         for model in models:
             try:
-                text = await self._ask(model, messages)
+                text = await self._ask(model, messages, task)
                 raw = extract_json(text)
                 return LLMResult(data=schema.model_validate(raw), model=model, raw=raw)
             except (ValueError, ValidationError) as e:
@@ -113,7 +123,7 @@ class LLMClient:
                 ],
             },
         ]
-        return await self.structured(messages, ParsedReceipt, models or self.settings.models)
+        return await self.structured(messages, ParsedReceipt, models or self.settings.models, "receipt")
 
     async def parse_manual(self, text: str, system: str):
         from app.llm.schema import ParsedManual
@@ -122,16 +132,16 @@ class LLMClient:
             {"role": "system", "content": system},
             {"role": "user", "content": text},
         ]
-        return await self.structured(messages, ParsedManual, self.settings.text_models)
+        return await self.structured(messages, ParsedManual, self.settings.text_models, "manual")
 
     # ---------- free text ----------
 
-    async def complete_text(self, messages: list[dict], models: list[str]) -> tuple[str, str]:
+    async def complete_text(self, messages: list[dict], models: list[str], task: str = "comment") -> tuple[str, str]:
         """Plain text answer and the model that gave it."""
         errors: list[str] = []
         for model in models:
             try:
-                text = (await self._ask(model, messages)).strip()
+                text = (await self._ask(model, messages, task)).strip()
                 if text:
                     return text, model
                 errors.append(f"{model}: empty answer")
@@ -150,7 +160,7 @@ class LLMClient:
 
         user = RECEIPT_TEXT_USER + (f"Подпись пользователя: {hint}\n\n" if hint else "") + text[:30000]
         messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
-        return await self.structured(messages, ParsedReceipt, models or self.settings.text_models)
+        return await self.structured(messages, ParsedReceipt, models or self.settings.text_models, "receipt_text")
 
     # ---------- bank ----------
 
@@ -159,7 +169,7 @@ class LLMClient:
         from app.llm.schema import ParsedBank
 
         messages = [{"role": "system", "content": BANK_SYSTEM}, {"role": "user", "content": text[:60000]}]
-        return await self.structured(messages, ParsedBank, self.settings.text_models)
+        return await self.structured(messages, ParsedBank, self.settings.text_models, "bank")
 
     # ---------- voice ----------
 
@@ -179,7 +189,7 @@ class LLMClient:
                 ],
             },
         ]
-        return await self.structured(messages, ParsedVoice, models)
+        return await self.structured(messages, ParsedVoice, models, "voice")
 
     # ---------- products ----------
 
@@ -192,7 +202,7 @@ class LLMClient:
             + "\n\nНовые названия из чеков:\n" + "\n".join(f"- {n}" for n in names)
         )
         messages = [{"role": "system", "content": PRODUCTS_SYSTEM}, {"role": "user", "content": user}]
-        return await self.structured(messages, ParsedProducts, self.settings.text_models)
+        return await self.structured(messages, ParsedProducts, self.settings.text_models, "products")
 
     # ---------- tool calling (questions in the web UI) ----------
 
@@ -201,9 +211,7 @@ class LLMClient:
         errors: list[str] = []
         for model in models:
             try:
-                resp = await self.client.chat.completions.create(
-                    model=model, messages=messages, tools=tools, temperature=0
-                )
+                resp = await self._create("ask", model, messages=messages, tools=tools)
                 if resp.choices:
                     return resp.choices[0].message, model
                 errors.append(f"{model}: no choices")

@@ -1,135 +1,144 @@
-# Семейные расходы
+# Family Expenses
 
-Telegram-бот для семейной группы и веб-интерфейс для учёта расходов.
+**English** | [Русский](README.ru.md)
 
-Купили что-то, сфотографировали чек, отправили в группу. Бот читает QR-код чека, отдаёт фото нейросети, получает список покупок с категориями и записывает в базу. В вебе видно, кто, что, где и на что тратит. Там же оригинал чека для проверки.
+A Telegram bot for a family group plus a web app for tracking expenses.
 
-## Возможности
+Buy something, take a photo of the receipt, send it to the group. The bot reads the receipt's QR code, passes the photo to an LLM, gets back the list of purchases with categories and stores it in the database. The web app shows who spends what, where and on what, next to the original receipt photo for checking.
 
-**Запись трат**
+The interface, the bot's replies and the default categories are in Russian. Receipts are expected from Bulgaria, and all amounts are in euros. In this document, interface labels are given in English with the Russian original in brackets, so you can find them on screen.
 
-- **Чек по фото** или файлом, включая HEIC с айфона. Скидки и залог за тару учитываются отдельными строками.
-- **Электронные чеки**: PDF-чек, скриншот онлайн-заказа или доставки, письмо с чеком на отдельную почту.
-- **Фискальный QR болгарского чека** даёт точные дату и сумму, защищает от повторной записи и помогает выпрямить фото, снятое боком.
-- **Сверка сумм.** Если позиции не сходятся с итогом или с QR, чек помечается «Проверить» с объяснением.
-- **Трата текстом**: `+ такси 12`, `/add кофе 3.50`. Можно одной суммой, `+ 12`, тогда запись попадёт в «Без категории».
-- **Трата голосом**: «двенадцать евро такси».
-- **Банковские уведомления.** Пересланное в группу SMS или push о списании превращается в запись.
-- **Выписка из банка** в CSV или PDF показывает в вебе траты, которые ещё не записаны. PDF-выписку можно прислать и в бот: он перечислит незаписанные списания и запишет их по кнопке.
-- **Трата за другого члена семьи**: `+ Маша: кино 12`, подпись к фото `Маша: тетради`, голосом «Маше на кино 15». Детей без Telegram добавляют в вебе: Настройки → Семья.
-- **Регулярные платежи**: аренда, интернет, подписки записываются сами в нужный день.
-- **Только евро.** Если в чеке цены в двух валютах, берутся суммы в евро.
+## Features
 
-**Правка**
+**Recording expenses**
 
-- **Из бота**: ответьте на сообщение бота о записи. Текст станет описанием, число новой суммой, а `Маша:` перенесёт трату на Машу. Под каждой записью кнопка «Удалить».
-- **В вебе**: магазин, дата, итог, описание, кто потратил, позиции, их категории и гарантия. Удаление с подтверждением.
-- **Запоминание категорий.** Исправили категорию товара, и она применится к этому товару во всех чеках и будущих покупках.
+- **Receipt photo**, or the image as a file, including HEIC from an iPhone. Discounts and bottle deposits are kept as separate lines.
+- **Electronic receipts**: a PDF receipt, a screenshot of an online order or delivery, or an e-mail with a receipt sent to a dedicated mailbox.
+- **Bulgarian fiscal QR code** gives the exact date and total, prevents booking the same receipt twice and helps straighten a photo taken sideways.
+- **Total check.** If the lines do not add up to the total or to the QR amount, the receipt is marked "Check" («Проверить») with an explanation.
+- **Expense as text**: `+ taxi 12`, `/add coffee 3.50`. An amount alone, `+ 12`, is booked under "No category" («Без категории»).
+- **Expense by voice message**: "twelve euros taxi".
+- **Income**: salary, side jobs, refunds. Added with `/income salary 1500`, in the web app, from a bank statement, from a bank SMS about incoming money or as a recurring income. Counted separately from expenses; the statistics show what is left.
+- **Transfers inside the family** count neither as an expense nor as income. Pocket money for a child is not counted twice, once when it is sent and again when the child spends it. You only need to tell the app once how the bank writes the child's name.
+- **Bank notifications.** A bank SMS or push notification about a payment or incoming money, forwarded to the group, becomes a record.
+- **Bank statement** in CSV or PDF: the web app shows the expenses and income that are not recorded yet. A PDF statement can also be sent to the bot: it lists what is missing and books it at the press of a button. A whole statement can be deleted at once.
+- **Expense for another family member**: `+ Masha: cinema 12`, a photo caption `Masha: notebooks`, or by voice. Children without Telegram are added in the web app under Settings → Family («Настройки → Семья»).
+- **Recurring payments and income**: rent, internet, subscriptions and salary are booked automatically on their day of the month.
+- **Euro only.** If a receipt shows prices in two currencies, the euro amounts are used.
 
-**Анализ**
+**Editing**
 
-- **Статистика** по категориям, людям, месяцам и магазинам, список чеков с фильтрами, экспорт в CSV.
-- **Вопросы обычным языком** в вебе: «сколько ушло на кафе за лето?».
-- **Бюджеты по категориям.** Бот предупреждает в группе при 80% и при превышении.
-- **Месячный отчёт** с графиком и коротким комментарием нейросети приходит в группу 1-го числа.
-- **Динамика цен.** Одинаковые товары с разными названиями в разных магазинах склеиваются в один.
-- **Гарантии.** Бот напоминает, когда у техники заканчивается гарантия.
+- **In the bot**: reply to the bot's message about a record. Text becomes the description, a number becomes the new amount, and `Masha:` moves the expense to Masha. Every record has a "Delete" button.
+- **In the web app**: store, date, total, description, who paid, the lines, their categories and warranty. Deleting asks for confirmation.
+- **Remembered categories.** Correct a product's category once, and it is applied to that product on all receipts and future purchases.
 
-## Шпаргалка по боту
+**Analysis**
 
-| Что прислать в группу | Что будет |
+- **Statistics** by category, person, month and store; a filterable list of receipts; CSV export.
+- **Questions in plain language** in the web app: "how much did we spend on cafés this summer?".
+- **Budgets per category.** The bot warns the group at 80% and when the budget is exceeded.
+- **Monthly report** with a chart and a short LLM comment is posted to the group on the 1st of each month.
+- **Price history.** The same product sold under different names in different stores is merged into one.
+- **Warranties.** The bot reminds you when an appliance's warranty is about to end.
+- **LLM balance and spending** in one place, with a warning in the group when the balance runs low.
+
+## Bot cheat sheet
+
+| Send to the group | Result |
 |---|---|
-| Фото чека | Чек распознан и записан. Подпись к фото станет описанием |
-| Фото с подписью `Маша: тетради` | Чек записан на Машу с описанием «тетради» |
-| PDF-чек, скриншот заказа | Распознан как обычный чек |
-| PDF-выписка из банка | Список незаписанных списаний, кнопка «Записать» |
-| `+ такси 12` или `/add такси 12` | Трата 12 € в категории «Такси» |
-| `+ 12` | Трата 12 € без описания, в «Без категории» |
-| `+ Маша: кино 12` | Трата записана на Машу |
-| Голосовое «двенадцать евро такси» | Трата 12 € на такси |
-| Пересланное SMS банка о списании | Трата записана, или бот скажет, что она уже есть |
-| `/bank текст` или ответ `/bank` на сообщение | То же для текста, который бот не узнал сам |
-| Ответ на сообщение бота текстом | Описание записи |
-| Ответ на сообщение бота числом | Новая сумма записи из одной строки |
-| Ответ на сообщение бота `Маша:` | Трата перенесена на Машу |
-| `/help` | Подсказка |
-| `/chatid` | ID группы для настройки |
+| Receipt photo | The receipt is recognised and booked. The caption becomes its description |
+| Photo with the caption `Masha: notebooks` | Booked for Masha with the description "notebooks" |
+| PDF receipt, order screenshot | Recognised like a regular receipt |
+| PDF bank statement | A list of unrecorded expenses, income and family transfers, a "Book" button and then "Delete the whole statement" |
+| `/income salary 1500` | Income of 1500 € in the "Salary" («Зарплата») category |
+| `/income Masha: side job 200` | Income booked for Masha |
+| `+ taxi 12` or `/add taxi 12` | Expense of 12 € in the "Taxi" category |
+| `+ 12` | Expense of 12 € without a description, under "No category" |
+| `+ Masha: cinema 12` | Expense booked for Masha |
+| Voice message "twelve euros taxi" | Expense of 12 € for a taxi |
+| Forwarded bank SMS | An expense, income or family transfer is booked, or the bot says it is already there |
+| `/bank text`, or `/bank` as a reply to a message | The same for text the bot did not recognise by itself |
+| Text reply to the bot's message | Description of the record |
+| Number as a reply to the bot's message | New amount of a single-line record |
+| `Masha:` as a reply to the bot's message | The expense is moved to Masha |
+| `/help` | Help |
+| `/chatid` | The group's ID, for the setup |
 
-Все суммы в евро.
+All amounts are in euros.
 
-## Стек
+## Stack
 
-| Часть | Технологии |
+| Part | Technology |
 |---|---|
-| Бот | Python 3.13, aiogram 3 |
-| Нейросеть | любой OpenAI-совместимый API, по умолчанию OpenRouter; модели задаются отдельно для каждой задачи |
-| QR, PDF, звук | zxing-cpp, pypdf, pypdfium2, PyAV |
+| Bot | Python 3.13, aiogram 3 |
+| LLM | any OpenAI-compatible API, OpenRouter by default; models are set per task |
+| QR, PDF, audio | zxing-cpp, pypdf, pypdfium2, PyAV |
 | API | FastAPI, SQLAlchemy 2, Alembic |
-| База | SQLite, переезд на PostgreSQL сменой `DATABASE_URL` |
-| Фронт | React, Vite, TypeScript, Mantine, TanStack Query, Recharts |
-| Запуск | один процесс: веб, бот и планировщик; Docker Compose или systemd |
+| Database | SQLite; switch to PostgreSQL by changing `DATABASE_URL` |
+| Frontend | React, Vite, TypeScript, Mantine, TanStack Query, Recharts |
+| Runtime | one process for the web app, the bot and the scheduler; Docker Compose or systemd |
 
-## Установка
+## Installation
 
-Нужен Docker с Compose. Для запуска без Docker нужны [uv](https://docs.astral.sh/uv/) и Node.js 20 или новее.
+You need Docker with Compose. To run without Docker, you need [uv](https://docs.astral.sh/uv/) and Node.js 20 or newer.
 
-### 1. Бот в Telegram
+### 1. Telegram bot
 
-1. В [@BotFather](https://t.me/BotFather) создайте бота командой `/newbot` и сохраните токен.
-2. Там же выполните `/setprivacy`, выберите бота и **Disable**. Иначе бот не увидит фото и голосовые в группе.
-3. Добавьте бота в семейную группу и напишите в ней `/chatid`. Бот ответит ID группы. Эта команда работает и до настройки.
+1. In [@BotFather](https://t.me/BotFather), create a bot with `/newbot` and save the token.
+2. Still in BotFather, run `/setprivacy`, choose the bot and select **Disable**. Otherwise the bot cannot see photos and voice messages in the group.
+3. Add the bot to the family group and send `/chatid` there. The bot replies with the group's ID. This command works before the setup is finished.
 
-### 2. Ключ нейросети
+### 2. LLM key
 
-Зарегистрируйтесь на [openrouter.ai](https://openrouter.ai), создайте ключ и пополните баланс на несколько долларов. Какие модели для чего и как экономить, описано ниже в разделе «Нейросеть».
+Sign up at [openrouter.ai](https://openrouter.ai), create a key and top up a few dollars. Which models to use for what, and how to save money, is described below under "LLM".
 
-### 3. Настройка
+### 3. Configuration
 
 ```bash
-cp .env.example .env
-# впишите BOT_TOKEN, ALLOWED_CHAT_IDS, LLM_API_KEY, SECRET_KEY и WEB_PASSWORD
+cp .env.example .env   # .env.example.ru has the same settings with Russian comments
+# fill in BOT_TOKEN, ALLOWED_CHAT_IDS, LLM_API_KEY, SECRET_KEY and WEB_PASSWORD
 ```
 
-### 4. Запуск в Docker
+### 4. Run with Docker
 
 ```bash
 docker compose up -d --build
 ```
 
-Веб откроется на `http://адрес-сервера:8000`, порт берётся из `WEB_PORT`. База и фото чеков лежат в папке `data/` рядом с проектом. Миграции базы применяются при старте автоматически.
+The web app opens at `http://server-address:8000`; the port comes from `WEB_PORT`. The database and receipt photos are stored in the `data/` folder next to the project. Database migrations run automatically at startup.
 
 ```bash
-docker compose logs -f              # логи
-docker compose restart              # после правки .env
-docker compose up -d --build        # после обновления кода
-docker compose down                 # остановить
+docker compose logs -f              # logs
+docker compose restart              # after editing .env
+docker compose up -d --build        # after updating the code
+docker compose down                 # stop
 ```
 
-Контейнер перезапускается сам после сбоя и после перезагрузки машины.
+The container restarts by itself after a crash and after the machine reboots.
 
-### 5. Почта для электронных чеков (по желанию)
+### 5. Mailbox for electronic receipts (optional)
 
-1. Заведите отдельный ящик, например в Gmail. Для Gmail включите двухэтапную проверку и создайте «пароль приложения», обычный пароль не подойдёт.
-2. Впишите в `.env` `IMAP_HOST`, `IMAP_USER` и `IMAP_PASSWORD`, затем `docker compose restart`.
-3. В вебе в Настройки → Семья укажите у каждого человека его адреса. Чек, пересланный с этого адреса, запишется на него.
+1. Create a separate mailbox, for example in Gmail. For Gmail, turn on 2-step verification and create an "app password"; the regular password will not work.
+2. Set `IMAP_HOST`, `IMAP_USER` and `IMAP_PASSWORD` in `.env`, then run `docker compose restart`.
+3. In the web app, under Settings → Family («Настройки → Семья»), enter every address of each person, for example a personal and a work one. Type each address and press Enter. A receipt forwarded from any of them is booked for that person. Mail from an unknown address is processed too, but without an owner.
 
-Бот проверяет ящик раз в `IMAP_POLL_MINUTES` минут и пишет о каждом чеке в группу. Обработанные письма помечаются прочитанными.
+The bot checks the mailbox every `IMAP_POLL_MINUTES` minutes and posts about each receipt in the group. Processed messages are marked as read.
 
-### Запуск без Docker
+### Run without Docker
 
 ```bash
 cd frontend && npm ci && npm run build && cd ..
 cd backend && uv sync && uv run python -m app.main
 ```
 
-Для автозапуска без Docker есть юнит systemd в `deploy/check-bot.service`. Одновременно запускайте что-то одно: два экземпляра бота будут мешать друг другу получать сообщения.
+To start it automatically without Docker, use the systemd unit in `deploy/check-bot.service`. Run only one of the two at a time: two bot instances would compete for incoming messages.
 
-## Вход в веб
+## Signing in to the web app
 
-- **Через Telegram.** Работает, когда у веба есть домен. В @BotFather выполните `/setdomain` и укажите домен. Пустят только участников группы из `ALLOWED_CHAT_IDS`.
-- **По паролю.** Задайте `WEB_PASSWORD`. Подходит, пока домена нет.
+- **With Telegram.** Works when the web app has a domain. In @BotFather, run `/setdomain` and enter the domain. Only members of the groups in `ALLOWED_CHAT_IDS` are let in.
+- **With a password.** Set `WEB_PASSWORD`. Useful while there is no domain.
 
-Для доступа из интернета поставьте перед сервисом reverse proxy с HTTPS, например Caddy:
+To open the app to the internet, put a reverse proxy with HTTPS in front of it, for example Caddy:
 
 ```
 expenses.example.com {
@@ -137,112 +146,139 @@ expenses.example.com {
 }
 ```
 
-## Нейросеть
+## LLM
 
-### Модели по задачам
+### Models per task
 
-Всё задаётся в `.env`, код менять не нужно. В каждом списке модели перечисляются через запятую. Если первая не ответила или упёрлась в лимит, берётся следующая. Текущие списки видны в вебе: Настройки → Отчёт и нейросеть.
+Everything is set in `.env`; no code changes are needed. Each list is comma-separated. If the first model does not answer or hits a rate limit, the next one is used. The current lists are shown in the web app under Settings → LLM («Настройки → Нейросеть»).
 
-| Переменная | Задача | Требование к модели | Пусто |
+| Variable | Task | Model must | If empty |
 |---|---|---|---|
-| `LLM_MODELS` | Чеки по фото, PDF без текста, скриншоты | понимает картинки | обязательна |
-| `LLM_STRONG_MODELS` | Повторное чтение чека, если суммы не сошлись | понимает картинки, лучше точнее основной | каскад выключен |
-| `LLM_TEXT_MODELS` | Траты текстом, банк, выписки, электронные чеки, комментарий к отчёту, склейка товаров | любая | берётся `LLM_MODELS` |
-| `LLM_AUDIO_MODELS` | Голосовые сообщения | понимает звук, например Gemini | голос выключен |
-| `LLM_ASK_MODELS` | Вопросы в вебе | поддерживает вызов функций | берётся `LLM_TEXT_MODELS` |
+| `LLM_MODELS` | Receipt photos, PDFs without text, screenshots | understand images | required |
+| `LLM_STRONG_MODELS` | Re-reading a receipt whose totals do not match | understand images, ideally more accurate than the main one | cascade off |
+| `LLM_TEXT_MODELS` | Text expenses, bank messages, statements, electronic receipts, report comment, product merging | anything | `LLM_MODELS` is used |
+| `LLM_AUDIO_MODELS` | Voice messages | understand audio, e.g. Gemini | voice off |
+| `LLM_ASK_MODELS` | Questions in the web app | support tool calling | `LLM_TEXT_MODELS` is used |
 
-Пример, который проверен на болгарских чеках:
+An example tested on Bulgarian receipts:
 
 ```bash
-LLM_MODELS=google/gemini-2.5-flash,deepseek/deepseek-v4.1-flash,google/gemma-4-31b-it:free
+LLM_MODELS=google/gemini-3.5-flash-lite,google/gemini-3.5-flash,deepseek/deepseek-v4.1-flash
 LLM_STRONG_MODELS=google/gemini-3.5-flash,deepseek/deepseek-v4.1-flash
-LLM_TEXT_MODELS=google/gemini-2.5-flash-lite,deepseek/deepseek-v4.1-flash
-LLM_AUDIO_MODELS=google/gemini-2.5-flash-lite,google/gemini-2.5-flash
+LLM_TEXT_MODELS=google/gemini-3.5-flash-lite,deepseek/deepseek-v4.1-flash
+LLM_AUDIO_MODELS=google/gemini-3.5-flash-lite,google/gemini-3.5-flash
 ```
 
-Другие провайдеры, например Gemini напрямую или локальная Ollama, подключаются через `LLM_BASE_URL`. Тогда все задачи идут к одному провайдеру. Примеры есть в `.env.example`.
+Other providers, such as Gemini directly or a local Ollama, are connected through `LLM_BASE_URL`. All tasks then go to that one provider. See `.env.example` for examples.
 
-### Расходы
+### Costs
 
-Чек стоит около 0.1 цента, текстовые задачи ещё дешевле. Для семьи это центы в месяц.
+A receipt costs about 0.1 cent; text tasks are cheaper still. For a family that is a few cents a month.
 
-На OpenRouter можно подключить свои ключи провайдеров: Workspace → BYOK. Тогда запросы к этим моделям идут через ваш ключ и ваши лимиты. Если ключ отказал, OpenRouter по умолчанию повторяет запрос за счёт своего баланса. Порядок, который мы используем:
+OpenRouter lets you connect your own provider keys under Workspace → BYOK. Requests then go through your key and its limits, and OpenRouter charges nothing or a 5% fee. But your key is used only when OpenRouter sends the request to that very provider:
 
-1. **Ключ Google AI Studio** с бесплатным лимитом, режим «Never use shared capacity for any model on this provider». Gemini работает только на бесплатном лимите, а при его исчерпании бот переходит к следующей модели.
-2. **Ключ DeepSeek** с переходом на общие мощности, чтобы чек распознался, даже если на ключе кончились деньги.
-3. **Лимит расходов** на ключ OpenRouter, который стоит в `LLM_API_KEY`, например $2.
+- **Google AI Studio** serves Gemini 3.x. Gemini 2.5 models are not available to new AI Studio users, so OpenRouter sends them to Google Vertex and charges its own balance. Use `google/gemini-3.5-flash-lite` and `google/gemini-3.5-flash` in `.env`.
+- **DeepSeek** as a provider serves only dated versions, for example `deepseek/deepseek-v4.1-flash-1017`. `deepseek/deepseek-v4.1-flash` without a date is served by third-party providers and paid from the OpenRouter balance. Also, DeepSeek may train on requests, and OpenRouter will not route to it until you allow that under Settings → Privacy. Whether to allow it is up to you.
+- **A spending limit** on the OpenRouter key in `LLM_API_KEY` caps what can be charged to the balance, for example $2 a month.
 
-В разделе Logs на OpenRouter у каждого запроса видно провайдера и то, через чей ключ он прошёл. Модель, которая распознала чек, видна в его карточке в вебе.
+How each request was paid for is shown in the web app under Settings → LLM.
 
-Учтите условие Google: в Евросоюзе бесплатный доступ к Gemini API формально нельзя использовать для приложения с пользователями. Бесплатные модели других провайдеров могут сохранять запросы.
+Note Google's terms: in the EU, the free tier of the Gemini API may not formally be used for an app with users. Free models from other providers may log requests.
 
-### Проверка моделей на своих чеках
+### Balance and spending
+
+The Settings → LLM tab («Настройки → Нейросеть») puts everything in one place:
+
+- **OpenRouter balance**: what is left on the account, the key's limit and what remains of it, what was charged today and this month, and how much went through your own keys.
+- **DeepSeek balance**, if `DEEPSEEK_API_KEY` is set in `.env`. The key is used only for this; requests still go through `LLM_BASE_URL`.
+- **Google AI Studio** has no balance: its free tier limits the number of requests, not money.
+- **Spending** for today, 7, 30 or 90 days: by task (receipts, bank, voice, questions...), by model and provider, and by day. What was charged to OpenRouter and what was paid with your own keys are shown separately, along with errors and the average cost per request. Every LLM request is stored in the `llm_calls` table.
+
+Once a day at 9:30 the bot checks the balance and posts in the group if the OpenRouter account or the key's limit has less than `LLM_BALANCE_ALERT` dollars left, 1 by default. It warns about the same low balance only once.
+
+### Testing models on your own receipts
 
 ```bash
 cd backend
-uv run python scripts/test_llm.py ~/чек1.jpg ~/чек2.jpg --quiet
-uv run python scripts/test_llm.py ~/чек1.jpg --models google/gemini-2.5-flash,deepseek/deepseek-v4.1-flash
+uv run python scripts/test_llm.py ~/receipt1.jpg ~/receipt2.jpg --quiet
+uv run python scripts/test_llm.py ~/receipt1.jpg --models google/gemini-3.5-flash-lite,deepseek/deepseek-v4.1-flash
 ```
 
-Скрипт ничего не записывает в базу. Он показывает время ответа, число позиций и сходится ли сумма с итогом и с QR-кодом. Чек, распознанный плохо, можно перераспознать в вебе другой моделью кнопкой «Распознать заново».
+The script writes nothing to the database. It shows the response time, the number of lines and whether the sum matches the total and the QR code. A poorly recognised receipt can be re-read with another model in the web app using the "Recognise again" («Распознать заново») button.
 
-## Как работают функции нейросети
+## How the LLM features work
 
-**Каскад.** Если сумма позиций не сошлась с итогом или с QR, чек перечитывается моделями из `LLM_STRONG_MODELS`. Если и после этого суммы не сходятся, чек остаётся «Проверить» с пометкой, какой моделью он перечитан.
+**Cascade.** If the lines do not add up to the total or to the QR amount, the receipt is re-read with the models from `LLM_STRONG_MODELS`. If the totals still do not match, the receipt stays marked "Check" with a note saying which model re-read it.
 
-**Банковские уведомления.** Бот отправляет нейросети только сообщения, где есть сумма в валюте и банковское слово: карта, плащане, покупка, POS и подобные. Обычная переписка в нейросеть не уходит. Дальше:
-- **Владелец.** Если последние 4 цифры карты указаны у кого-то в Настройки → Семья, трата записывается на этого человека. Иначе на того, кто переслал.
-- **Повтор.** Если та же сумма уже записана в пределах двух дней, например по чеку, бот только сообщает об этом и ничего не записывает. Повторно пересланное уведомление тоже узнаётся.
-- **Только расходы.** Поступления, возвраты и остаток на счёте не записываются.
+**Record types.** Every record has one of three types:
 
-**Выписка.** Страница «Выписка» в вебе. Загрузите CSV или PDF с текстом, сканы не подходят. Нейросеть находит списания, а сайт показывает, какие из них уже записаны по тем же правилам. Ничего не сохраняется, пока вы не нажмёте «Записать». Повторный импорт той же выписки ничего не задвоит.
-Пополнения счёта, переводы между своими счетами и входящие суммы тратами не считаются. Переводы другим людям считаются, их можно снять с отметки.
+| Type | What it is | Where it counts |
+|---|---|---|
+| Expense («Расход») | a purchase, a service, a bank fee, a cash withdrawal, a transfer to someone outside the family | statistics, budgets, report, questions |
+| Income («Доход») | salary, a refund, cashback, money from someone outside the family | the separate "Income" total and the balance |
+| Inside the family («Внутри семьи») | a transfer to or from a family member | nowhere; only shown in the list of records |
 
-PDF-выписку можно прислать и в бот. Бот отличает её от чека по IBAN и словам вроде «выписка», «баланс». Он показывает незаписанные списания и записывает их все по кнопке «Записать». Если нужны не все строки, загрузите выписку в вебе. Кнопка живёт до перезапуска бота. Скриншот выписки бот не записывает, присылайте PDF.
+The type can be changed on the record's page. Moves between your own accounts and top-ups from your own card are not booked at all.
 
-**Голосовые.** Нужна `LLM_AUDIO_MODELS`. Голосовые длиннее минуты бот не слушает. Если в сообщении нет речи или это не трата, бот ничего не записывает и молча ставит 🤔. Распознанная фраза сохраняется в описании записи.
+**Transfers inside the family.** Under Settings → Family, in the "Name at the bank" («Имя в банке») field, enter how the bank writes the person: `Vera Maslennikova`. Several spellings are allowed. From then on, transfers to and from that person, past and future, count as transfers inside the family. You can do the same from a record: choose "Inside the family", pick the family member and keep the "Remember" («Запомнить») box ticked. The "Statement" page has a "Family: name" type for this.
 
-**Склейка товаров.** После каждого чека нейросеть в фоне сопоставляет новые названия с уже известными товарами, например «ПРЯСНО МЛЯКО 3% 1Л» и «Мляко прясно Верея 3% 1л» станут «Молоко 3% 1 л». Разные объёмы остаются разными товарами. На странице «Цены» можно отметить товары и объединить их вручную или разделить склеенный товар. Ручные решения автоматическая склейка не трогает.
+**Bank notifications.** The bot passes a message to the LLM only if it contains an amount with a currency and a banking word: card, плащане, покупка, постъпление, превод and the like. Ordinary chat never goes to the LLM. Then:
+- **Type.** The LLM tells a purchase, income, a transfer to a person and a move between own accounts apart. The record type follows the rules above.
+- **Owner.** If the card's last 4 digits are entered for someone under Settings → Family, the record is booked for that person. Otherwise it is booked for whoever forwarded the message.
+- **Duplicates.** If the same amount of the same type is already recorded within two days, for example an expense from a receipt, the bot only says so and books nothing. A notification forwarded twice is recognised too.
 
-**Гарантии.** Для техники и бытовых приборов нейросеть берёт гарантийный срок из чека. Если его нет, а вещь дороже 30 €, ставит 24 месяца, минимальную гарантию в ЕС. За `WARRANTY_REMIND_DAYS` дней до конца бот напоминает в группе. Список на странице «Гарантии», срок правится в позиции чека.
+**Statement.** The "Statement" page («Выписка») in the web app. Upload a CSV or a PDF with text; scans do not work. The LLM finds the transactions, and the page shows each one's type and which are already recorded, by the same rules. You can change a row's type. Nothing is saved until you press "Book" («Записать»). Importing the same statement again creates no duplicates.
 
-**Вопросы.** Нейросеть не видит базу напрямую и не может ничего изменить. Ей доступны только три функции: итоги за период, расходы по месяцам и поиск покупок. Если данных нет, она так и отвечает.
+A PDF statement can also be sent to the bot. The bot tells a statement from a receipt by the IBAN and words like "statement" and "balance". It lists unrecorded expenses, income and family transfers in separate groups and books them all with the "Book" button. If you need only some rows, upload the statement in the web app. The button works until the bot restarts. The bot does not book a screenshot of a statement; send the PDF.
 
-**Комментарий к отчёту.** К месячному отчёту добавляются 2–4 предложения о том, что выросло, что необычно и где превышен бюджет. Если нейросеть недоступна, отчёт приходит без комментария.
+**Deleting a statement.** Records from one statement are linked. You can delete them all at once from the "Uploaded statements" list on the "Statement" page, from the list of that statement's records, or with the "🗑 Delete the whole statement" button under the bot's message. Other records are not affected.
 
-## Разработка
+**Income categories** are chosen by words in the description: "salary" → "Salary" («Зарплата»), "refund" → "Refunds" («Возвраты»), anything else → "Other income" («Прочие доходы»). The list can be edited under Settings → Categories.
+
+**Voice messages.** Requires `LLM_AUDIO_MODELS`. The bot ignores voice messages longer than a minute. If a message has no speech or is not about an expense, the bot books nothing and quietly reacts with 🤔. The recognised phrase is saved in the record's description.
+
+**Product merging.** After each receipt, the LLM matches new product names against known products in the background. For example, "ПРЯСНО МЛЯКО 3% 1Л" and "Мляко прясно Верея 3% 1л" both become "Milk 3% 1 l". Different sizes stay separate products. On the "Prices" page («Цены») you can select products and merge them by hand, or split a merged product. Automatic merging never overrides your manual choices.
+
+**Warranties.** For appliances and electronics, the LLM takes the warranty period from the receipt. If there is none and the item costs more than 30 €, it sets 24 months, the EU minimum. `WARRANTY_REMIND_DAYS` days before the end, the bot reminds the group. The list is on the "Warranties" page («Гарантии»); the period can be edited on the receipt line.
+
+**Questions.** The LLM does not see the database directly and cannot change anything. It can call only three functions: totals for a period, spending by month and a purchase search. If there is no data, it says so.
+
+**Report comment.** The monthly report gets 2–4 sentences about what went up, what was unusual and which budgets were exceeded. If the LLM is unavailable, the report is posted without the comment.
+
+## Development
 
 ```bash
-# бэкенд без входа и без бота
+# backend without sign-in and without the bot
 cd backend && AUTH_DISABLED=true uv run python -m app.main
-# фронт с горячей перезагрузкой, запросы /api проксируются на :8000
+# frontend with hot reload; /api requests are proxied to :8000
 cd frontend && npm run dev
-# тесты
+# tests
 cd backend && uv run pytest
-# новая миграция после изменения моделей
-cd backend && uv run alembic revision --autogenerate -m "описание"
+# new migration after changing the models
+cd backend && uv run alembic revision --autogenerate -m "description"
 ```
 
-Документация API: `/api/docs`.
+API documentation: `/api/docs`.
 
-Где что лежит в бэкенде:
+Where things are in the backend:
 
-| Модуль | Что делает |
+| Module | What it does |
 |---|---|
-| `app/receipts/service.py` | распознавание чеков, каскад, PDF, электронные чеки, траты текстом |
-| `app/bank.py` | банковские уведомления и выписки |
-| `app/voice.py` | голосовые сообщения |
-| `app/products.py` | склейка товаров |
-| `app/ask.py` | вопросы и функции, доступные нейросети |
-| `app/email_inbox.py` | чеки из почты |
-| `app/warranty.py` | напоминания о гарантии |
-| `app/reports.py` | месячный отчёт и комментарий |
-| `app/llm/` | клиент, промпты и схемы ответов нейросети |
-| `app/bot/handlers.py` | бот |
+| `app/receipts/service.py` | receipt recognition, cascade, PDFs, electronic receipts, text expenses |
+| `app/bank.py` | bank notifications, statements, transaction types and transfers inside the family |
+| `app/voice.py` | voice messages |
+| `app/products.py` | product merging |
+| `app/ask.py` | questions and the functions the LLM may call |
+| `app/email_inbox.py` | receipts from the mailbox |
+| `app/warranty.py` | warranty reminders |
+| `app/reports.py` | monthly report and its comment |
+| `app/llm/` | LLM client, prompts and response schemas |
+| `app/llm/usage.py` | request log, provider balances, low-balance warning |
+| `app/bot/handlers.py` | the bot |
 
-## Резервная копия
+## Backup
 
-Всё состояние в папке `data/`: база `app.db` и фото чеков. Копию базы можно снять на ходу:
+All state lives in the `data/` folder: the `app.db` database and the receipt photos. A copy of the database can be taken while the app is running:
 
 ```bash
 docker compose exec check-bot python -c "import sqlite3; sqlite3.connect('/app/data/app.db').backup(sqlite3.connect('/app/data/app-backup.db'))"

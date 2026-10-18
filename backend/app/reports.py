@@ -54,7 +54,7 @@ async def month_comment(session: AsyncSession, month: str, cur: dict, prev: dict
 
     if not cur["total"]:
         return None
-    pick = lambda s: {k: s[k] for k in ("total", "receipts", "by_category", "by_subcategory", "by_user", "by_store", "top_items")}  # noqa: E731
+    pick = lambda s: {k: s[k] for k in ("total", "receipts", "by_category", "by_subcategory", "by_user", "by_store", "top_items", "income")}  # noqa: E731
     data = {
         "month": month_title(month),
         "this_month": pick(cur),
@@ -85,11 +85,13 @@ async def build_monthly_report(
     pstart, pend = month_bounds(before)
     prev = await summary(session, pstart, pend)
 
-    lines = [f"📊 <b>{month_title(month)}</b>", f"Всего: <b>{cur['total']:.2f} €</b>"]
+    lines = [f"📊 <b>{month_title(month)}</b>", f"Расходы: <b>{cur['total']:.2f} €</b>"]
     if prev["total"]:
         diff = (cur["total"] - prev["total"]) / prev["total"] * 100
         sign = "+" if diff >= 0 else ""
         lines.append(f"К прошлому месяцу: {sign}{diff:.0f}%")
+    if income := cur["income"]["total"]:
+        lines.append(f"Доходы: <b>{income:.2f} €</b>, остаток: {income - cur['total']:+.2f} €")
     if with_comment and (comment := await month_comment(session, month, cur, prev, llm)):
         lines += ["", f"💬 {comment}"]
     if cur["by_user"]:

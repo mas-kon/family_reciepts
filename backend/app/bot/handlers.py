@@ -48,13 +48,16 @@ HELP = (
     "Подпись к фото станет описанием: <i>овощи на рынке</i>.\n\n"
     "<b>Трата без чека:</b> <code>/add такси 12</code> или <code>+ кофе 3.50</code>. "
     "Можно одной суммой: <code>+ 12</code>, она попадёт в «Без категории».\n\n"
+    "<b>Доход:</b> <code>/income зарплата 1500</code>, "
+    "<code>/income Маша: подработка 200</code>.\n\n"
     "<b>За другого члена семьи:</b> <code>+ Маша: кино 12</code>, "
     "у фото подпись <code>Маша: тетради</code>.\n\n"
     "<b>Голосом:</b> «двенадцать евро такси» или «Маше на кино пятнадцать».\n\n"
-    "<b>Банк:</b> перешлите сюда SMS или уведомление банка о списании, я запишу трату. "
+    "<b>Банк:</b> перешлите сюда SMS или уведомление банка о списании или поступлении, я запишу его. "
     "Если она уже записана по чеку, просто скажу об этом. Или: <code>/bank текст уведомления</code>.\n\n"
-    "<b>Выписка:</b> пришлите PDF-выписку из банка, я покажу, какие списания ещё не записаны, "
-    "и запишу их по кнопке.\n\n"
+    "<b>Выписка:</b> пришлите PDF-выписку из банка, я покажу, какие расходы и доходы ещё не записаны, "
+    "и запишу их по кнопке. Переводы членам семьи в расходы не входят: "
+    "укажите в вебе, как банк пишет их имена (Настройки → Семья).\n\n"
     "<b>PDF-чек</b> или скриншот заказа присылайте как обычный чек.\n\n"
     "<b>Исправить запись:</b> ответьте на моё сообщение о ней:\n"
     "• текстом, это будет описание;\n"
@@ -93,6 +96,10 @@ async def format_receipt(session: AsyncSession, r: Receipt, sender_id: int | Non
     for it in items:
         by_cat[names.get(it.category_id, "Без категории")] += it.total
     head = "✅" if r.status == "ok" else "⚠️"
+    if r.kind == "income":
+        head = "💰"
+    elif r.kind == "transfer":
+        head = "👨‍👩‍👧"
     when = f"{r.purchased_at:%d.%m %H:%M}" if r.purchased_at else ""
     if r.store:
         title = r.store
@@ -100,10 +107,15 @@ async def format_receipt(session: AsyncSession, r: Receipt, sender_id: int | Non
         title = items[0].name_ru or items[0].name_original
     else:
         title = "Чек"
-    lines = [
-        f"{head} <b>{html.escape(title)}</b> · {when}".rstrip(" ·"),
-        f"{money(r.total)} · позиций: {len(items)}",
-    ]
+    lines = [f"{head} <b>{html.escape(title)}</b> · {when}".rstrip(" ·")]
+    if r.kind == "income":
+        lines.append(f"Доход {money(r.total)}")
+    elif r.kind == "transfer":
+        peer = await session.get(User, r.peer_user_id) if r.peer_user_id else None
+        to = f" ({html.escape(peer.name)})" if peer else ""
+        lines.append(f"Перевод внутри семьи{to}: {money(r.total)}, в расходы не входит")
+    else:
+        lines.append(f"{money(r.total)} · позиций: {len(items)}")
     top = sorted(by_cat.items(), key=lambda kv: -kv[1])[:4]
     if top:
         lines.append(", ".join(f"{k} {v:.2f}" for k, v in top))
@@ -204,11 +216,53 @@ def _tx_line(tx) -> str:
     return f"{when} {html.escape(tx.merchant or 'Оплата')} — {money(tx.amount)}"
 
 
+STATEMENT_GROUPS = [
+    ("expense", "💸 Расходы"),
+    ("income", "💰 Доходы"),
+    ("transfer", "👨‍👩‍👧 Внутри семьи, в расходы не войдут"),
+]
+
+
+def statement_summary(rows) -> tuple[str, list]:
+    """Message about an analysed statement and the operations to book."""
+    booked_kinds = [r for r in rows if r.kind]
+    new = [r for r in booked_kinds if not r.match]
+    own = len(rows) - len(booked_kinds)
+    lines = [f"🏦 <b>Выписка.</b> Операций: {len(booked_kinds)}, уже записано: {len(booked_kinds) - len(new)}."]
+    if own:
+        lines.append(f"Между своими счетами: {own}, их не учитываю.")
+    if not new:
+        lines.append("Всё уже записано, добавлять нечего.")
+        return "\n".join(lines), []
+    shown = 0
+    for kind, title in STATEMENT_GROUPS:
+        group = [r for r in new if r.kind == kind]
+        if not group:
+            continue
+        lines.append(f"\n{title} ({len(group)}, {sum(r.tx.amount for r in group):.2f} €):")
+        for r in group:
+            if shown >= MAX_STATEMENT_LINES:
+                break
+            peer = f" → {html.escape(r.peer.name)}" if r.peer else ""
+            lines.append(f"• {_tx_line(r.tx)}{peer}")
+            shown += 1
+    if shown < len(new):
+        lines.append(f"…и ещё {len(new) - shown}")
+    if any(r.kind == "expense" and r.tx.type == "transfer_out" for r in new):
+        lines.append(
+            "\n<i>Переводы людям считаю расходами. Если это кто-то из семьи, укажите, как его пишет "
+            "банк: в вебе Настройки → Семья. Тогда его переводы не войдут в расходы.</i>"
+        )
+    lines.append("\nЗаписать? Выбрать отдельные строки можно в вебе, на странице «Выписка».")
+    return "\n".join(lines), [r.tx for r in new]
+
+
 async def _statement(message: Message, text: str):
     status = await message.reply("⏳ Читаю выписку…")
     try:
         async with _llm_slots, session_factory()() as session:
             rows = await analyse_statement(ReceiptService(session), text)
+            summary, txs = statement_summary(rows)
     except LLMError as e:
         log.warning("statement failed: %s", e)
         await _edit(status, "❌ Нейросеть не ответила, попробуйте позже или загрузите выписку в вебе.")
@@ -217,31 +271,23 @@ async def _statement(message: Message, text: str):
         log.exception("failed to read statement")
         await _edit(status, "❌ Не удалось прочитать выписку.")
         return
-    new = [r for r in rows if not r.match]
     if not rows:
-        await _edit(status, "🏦 Это выписка, но списаний в ней не нашёл. Ничего не записал.")
+        await _edit(status, "🏦 Это выписка, но операций в ней не нашёл. Ничего не записал.")
         return
-    lines = [f"🏦 <b>Выписка.</b> Списаний: {len(rows)}, уже записано: {len(rows) - len(new)}."]
-    if not new:
-        lines.append("Всё уже записано, ничего добавлять не нужно.")
-        await _edit(status, "\n".join(lines))
+    if not txs:
+        await _edit(status, summary)
         return
-    lines.append(f"\nНе записано ({sum(r.tx.amount for r in new):.2f} €):")
-    lines += [f"• {_tx_line(r.tx)}" for r in new[:MAX_STATEMENT_LINES]]
-    if len(new) > MAX_STATEMENT_LINES:
-        lines.append(f"…и ещё {len(new) - MAX_STATEMENT_LINES}")
-    lines.append("\nЗаписать их? Выбрать отдельные строки можно в вебе, на странице «Выписка».")
     token = secrets.token_hex(4)
-    _statements[token] = (message.chat.id, message.from_user or None, [r.tx for r in new])
+    _statements[token] = (message.chat.id, message.from_user or None, txs)
     while len(_statements) > MAX_PENDING_STATEMENTS:
         _statements.popitem(last=False)
     kb = InlineKeyboardMarkup(
         inline_keyboard=[[
-            InlineKeyboardButton(text=f"✅ Записать ({len(new)})", callback_data=f"stmt:{token}"),
+            InlineKeyboardButton(text=f"✅ Записать ({len(txs)})", callback_data=f"stmt:{token}"),
             InlineKeyboardButton(text="Не надо", callback_data=f"stmtno:{token}"),
         ]]
     )
-    await _edit(status, "\n".join(lines), kb)
+    await _edit(status, summary, kb)
 
 
 @router.callback_query(F.data.startswith("stmt:"))
@@ -263,7 +309,7 @@ async def on_statement_book(cb: CallbackQuery, bot: Bot):
         alerts = []
         for r in booked:
             alerts += await new_budget_alerts(session, r)
-    text = (cb.message.html_text or "").split("\n\nЗаписать их?")[0]
+    text = (cb.message.html_text or "").split("\n\nЗаписать?")[0]
     text += f"\n\n✅ Записано: {len(booked)}" + (f", уже были: {skipped}" if skipped else "") + "."
     await cb.message.edit_text(text, reply_markup=_import_keyboard(import_id) if import_id else None)
     await cb.answer("Записано")
@@ -402,6 +448,37 @@ async def _manual(message: Message, bot: Bot, text: str):
         r.bot_message_id = reply.message_id
         await session.commit()
         await _send_alerts(bot, message.chat.id, await new_budget_alerts(session, r))
+
+
+async def _income(message: Message, text: str):
+    if not _allowed(message.chat.id):
+        return
+    text = text.strip()
+    async with session_factory()() as session:
+        svc = ReceiptService(session)
+        sender = await _sender(svc, message)
+        owner = sender
+        who, rest = split_who(text)
+        if who:
+            owner = await svc.find_user(who)
+            if owner is None:
+                await message.reply(_unknown_member(who))
+                return
+            text = rest
+        r = await svc.add_income_text(text, owner, message.chat.id, message.message_id)
+        if r is None:
+            await message.reply("Формат: <code>/income зарплата 1500</code>")
+            return
+        reply = await message.reply(
+            await format_receipt(session, r, sender.id if sender else None), reply_markup=receipt_keyboard(r.id)
+        )
+        r.bot_message_id = reply.message_id
+        await session.commit()
+
+
+@router.message(Command("income", "доход"))
+async def on_income(message: Message, command: CommandObject):
+    await _income(message, command.args or "")
 
 
 @router.message(Command("add"))
@@ -569,15 +646,16 @@ async def _bank(message: Message, bot: Bot, text: str, explicit: bool):
             return
         if not results:
             if explicit:
-                await message.reply("Не нашёл в тексте списаний.")
+                await message.reply("Не нашёл в тексте операций, которые надо записать.")
             return
         for r in results:
             if r.match:
                 m = r.match
                 when = f" от {m.purchased_at:%d.%m}" if m.purchased_at else ""
+                what = {"income": "Поступление", "transfer": "Перевод"}.get(r.kind, "Списание")
+                where = f" ({html.escape(r.tx.merchant)})" if r.tx.merchant else ""
                 await message.reply(
-                    f"🏦 Списание {money(r.tx.amount)}{' в ' + html.escape(r.tx.merchant) if r.tx.merchant else ''} "
-                    f"уже записано{when}.",
+                    f"🏦 {what} {money(r.tx.amount)}{where} уже записано{when}.",
                     reply_markup=receipt_keyboard(m.id),
                 )
                 continue
