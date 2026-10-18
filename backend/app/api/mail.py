@@ -8,10 +8,9 @@ from app import email_inbox
 from app.api.deps import current_viewer
 from app.clock import now_local
 from app.config import get_settings
+from app.i18n import t
 
 router = APIRouter(prefix="/api/mail", tags=["mail"], dependencies=[Depends(current_viewer)])
-
-HINT_AUTH = "Проверьте IMAP_USER и IMAP_PASSWORD в .env (для Gmail нужен пароль приложения, не обычный пароль)."
 
 
 class MailStatus(BaseModel):
@@ -39,7 +38,7 @@ def _out() -> MailStatus:
         checked_at=st.checked_at,
         ok=st.ok,
         error=st.error,
-        hint=HINT_AUTH if st.error and ("AUTH" in st.error.upper() or "CREDENTIAL" in st.error.upper()) else None,
+        hint=t("api.mail_hint_auth") if st.error and ("AUTH" in st.error.upper() or "CREDENTIAL" in st.error.upper()) else None,
         received=st.received,
     )
 

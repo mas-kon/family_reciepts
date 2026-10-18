@@ -2,7 +2,7 @@
 
 Family expense tracker: a Telegram bot takes receipt photos, bank messages, statements, voice and text in a family group; an LLM turns them into records; a React web app shows statistics. Overview, features and setup: [README.md](README.md) (English) and [README.ru.md](README.ru.md) (Russian).
 
-The user writes in Russian, so answer in Russian. The UI, bot replies and default categories are in Russian too.
+The user writes in Russian, so answer in Russian. The app is multilingual (ru, en, bg; one language per family, Settings → Family): Russian is the default.
 
 ## Documentation must stay current, in English and Russian
 
@@ -23,6 +23,7 @@ Every change that affects behaviour, settings, commands or setup updates the doc
 
 - `backend/app/` — Python 3.13, uv. FastAPI, aiogram 3, SQLAlchemy 2 async on SQLite, APScheduler. One process runs the web app, the bot and the scheduler (`app/main.py`).
   - `receipts/` `service.py` is `ReceiptService` assembled from `recognition.py` (pictures, PDFs, cascade, duplicates) and `records.py` (`book_single`, typed and spoken records, edits) over `base.py`; `parsing.py`, `images.py`;  `bank.py` bank messages, statements, record kinds and family transfers, `family.py` member lookups, `clock.py` (`now_local`), `constants.py` (`Kind`), `bot/ui.py` messages and buttons, `voice.py`, `products.py`, `ask.py`, `email_inbox.py`, `warranty.py`, `reports.py`, `stats.py`, `scheduler.py`.
+  - `i18n.py` and `locales/{ru,en,bg}.py`: every text the user sees goes through `t("key", **params)` (bot replies, API errors, reports, CSV headers, record names, system category names `cat.<key>`). The family's language is kept in `app_settings` and cached; `all_languages(key)` finds a text sent before a language switch. System categories have `Category.key` and are found by key, never by name.
   - `llm/` client (one shared `get_llm()`, model fallback, usage logging), `prompt.py`, `schema.py`, `usage.py` (request log, balances).
   - `api/` FastAPI routers; `bot/` the bot: `handlers.py` is the root router (access check, then the groups `start`, `photos`, `statements`, `records`, `audio`, `banking` in the order they are tried: the first matching handler wins).
 - `backend/alembic/versions/` hand-numbered migrations `0001`… `0009`.
@@ -45,6 +46,7 @@ The production app runs in the `check-bot` container on this machine. After a ch
 ## Rules
 
 - **Euro only.** No other currencies anywhere.
+- **No hard-coded user-facing text.** New bot replies, API errors, button labels and web labels go into the catalogs of all three languages (`backend/app/locales/*.py`, `frontend/src/locales/*.json`; a backend test checks that the keys and placeholders match). `Item.name_ru` and `name_ru` in the API keep their historic name but hold the name in the family's language. A new LLM task's label is a catalog key `task.<name>` listed in `TASK_LABEL` (`llm/usage.py`).
 - **Record kinds.** `Receipt.kind` is `expense`, `income` or `transfer` (inside the family). Spending statistics, budgets, reports and questions count only `expense`; `stats._filtered` does this through its `kind` argument. Every new aggregation must filter by kind. Transfers to family members (matched by `User.bank_names`) are never spending.
 - **The bot does not show statistics.** The group is for sending things in; statistics live in the web app. The monthly report and budget, warranty and balance warnings are the agreed exceptions.
 - **LLM prompts contain no concrete example values** that a model could echo back. A voice prompt with example phrases made models "hear" those phrases in silence. Describe the format, not sample content.

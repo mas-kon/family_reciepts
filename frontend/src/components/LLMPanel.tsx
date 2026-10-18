@@ -2,6 +2,7 @@ import { Anchor, Button, Card, Group, Loader, SegmentedControl, SimpleGrid, Stac
 import { IconExternalLink, IconRefresh } from '@tabler/icons-react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { api, qs, type LLMUsage, type ProviderBalance, type UsageRow } from '../api'
 import { notifyError } from '../hooks'
@@ -12,6 +13,7 @@ const usd = (v: number | null | undefined) =>
   v === null || v === undefined ? '—' : `$${Math.abs(v) < 0.1 && v !== 0 ? v.toFixed(4) : v.toFixed(2)}`
 
 function BalanceCard({ b, alertBelow }: { b: ProviderBalance; alertBelow: number }) {
+  const { t } = useTranslation()
   const low = b.balance != null && alertBelow > 0 && b.balance < alertBelow
   const k = b.key
   return (
@@ -20,7 +22,7 @@ function BalanceCard({ b, alertBelow }: { b: ProviderBalance; alertBelow: number
         <Text fw={600}>{b.provider}</Text>
         <Anchor href={b.url} target="_blank" size="xs">
           <Group gap={2}>
-            на сайте <IconExternalLink size={12} />
+            {t('llmp.on_site')} <IconExternalLink size={12} />
           </Group>
         </Anchor>
       </Group>
@@ -32,27 +34,27 @@ function BalanceCard({ b, alertBelow }: { b: ProviderBalance; alertBelow: number
       <Stack gap={2}>
         {b.total_credits !== undefined && (
           <Text size="xs" c="dimmed">
-            Пополнено всего {usd(b.total_credits)}
+            {t('llmp.total_credits', { sum: usd(b.total_credits) })}
           </Text>
         )}
         {k && (
           <>
             {k.limit !== null && (
               <Text size="xs" c="dimmed">
-                Лимит ключа {usd(k.limit)}
-                {k.limit_reset === 'monthly' ? ' в месяц' : k.limit_reset === 'daily' ? ' в день' : ''}, осталось{' '}
-                {usd(k.limit_remaining)}
+                {t('llmp.key_limit', { sum: usd(k.limit) })}
+                {k.limit_reset === 'monthly' ? t('llmp.per_month') : k.limit_reset === 'daily' ? t('llmp.per_day') : ''}
+                {t('llmp.remaining', { sum: usd(k.limit_remaining) })}
               </Text>
             )}
             <Text size="xs" c="dimmed">
-              Списано с OpenRouter: сегодня {usd(k.usage_daily)}, за месяц {usd(k.usage_monthly)}
+              {t('llmp.charged', { day: usd(k.usage_daily), month: usd(k.usage_monthly) })}
             </Text>
             <Text size="xs" c="dimmed">
-              Через свои ключи за месяц: {usd(k.byok_usage_monthly)}
+              {t('llmp.byok_month', { sum: usd(k.byok_usage_monthly) })}
             </Text>
             {k.free_requests_remaining !== null && (
               <Text size="xs" c="dimmed">
-                Бесплатных запросов к :free моделям сегодня осталось: {k.free_requests_remaining}
+                {t('llmp.free_left', { count: k.free_requests_remaining })}
               </Text>
             )}
           </>
@@ -68,17 +70,18 @@ function BalanceCard({ b, alertBelow }: { b: ProviderBalance; alertBelow: number
 }
 
 function UsageTable({ rows, first }: { rows: (UsageRow & { name: string; sub?: string | null })[]; first: string }) {
+  const { t } = useTranslation()
   return (
     <Table.ScrollContainer minWidth={560}>
       <Table fz="sm" striped>
         <Table.Thead>
           <Table.Tr>
             <Table.Th>{first}</Table.Th>
-            <Table.Th className="num">Запросов</Table.Th>
-            <Table.Th className="num">Ошибок</Table.Th>
-            <Table.Th className="num">OpenRouter</Table.Th>
-            <Table.Th className="num">Свои ключи</Table.Th>
-            <Table.Th className="num">За запрос</Table.Th>
+            <Table.Th className="num">{t('llmp.col_calls')}</Table.Th>
+            <Table.Th className="num">{t('llmp.col_failed')}</Table.Th>
+            <Table.Th className="num">{t('llmp.col_openrouter')}</Table.Th>
+            <Table.Th className="num">{t('llmp.col_own')}</Table.Th>
+            <Table.Th className="num">{t('llmp.col_per_call')}</Table.Th>
           </Table.Tr>
         </Table.Thead>
         <Table.Tbody>
@@ -100,7 +103,7 @@ function UsageTable({ rows, first }: { rows: (UsageRow & { name: string; sub?: s
                   {r.byok_calls > 0 && (
                     <Text span size="xs" c="dimmed">
                       {' '}
-                      (свои {r.byok_calls})
+                      {t('llmp.own_calls', { count: r.byok_calls })}
                     </Text>
                   )}
                 </Table.Td>
@@ -120,6 +123,7 @@ function UsageTable({ rows, first }: { rows: (UsageRow & { name: string; sub?: s
 }
 
 export function LLMPanel() {
+  const { t } = useTranslation()
   const qc = useQueryClient()
   const p = usePalette()
   const [days, setDays] = useState('30')
@@ -145,9 +149,9 @@ export function LLMPanel() {
   return (
     <Stack>
       <Group justify="space-between">
-        <Title order={4}>Баланс</Title>
+        <Title order={4}>{t('llmp.balance')}</Title>
         <Button size="xs" variant="default" leftSection={<IconRefresh size={14} />} onClick={refresh}>
-          Обновить
+          {t('llmp.refresh')}
         </Button>
       </Group>
       {balance.isLoading ? (
@@ -163,8 +167,7 @@ export function LLMPanel() {
                 DeepSeek
               </Text>
               <Text size="xs" c="dimmed">
-                Чтобы видеть баланс своего ключа DeepSeek, впишите его в .env как DEEPSEEK_API_KEY и перезапустите
-                сервис.
+                {t('llmp.deepseek_hint')}
               </Text>
             </Card>
           )}
@@ -173,49 +176,46 @@ export function LLMPanel() {
               Google AI Studio
             </Text>
             <Text size="xs" c="dimmed">
-              Баланса нет: бесплатный уровень ограничивает число запросов в минуту и в день, а не деньги. Сколько
-              запросов прошло через ваш ключ, видно ниже в колонке «свои».
+              {t('llmp.google_hint')}
             </Text>
           </Card>
         </SimpleGrid>
       )}
       {!!balance.data?.alert_below && (
         <Text size="xs" c="dimmed">
-          Бот предупредит в группе, когда останется меньше {usd(balance.data.alert_below)} (LLM_BALANCE_ALERT).
+          {t('llmp.alert', { sum: usd(balance.data.alert_below) })}
         </Text>
       )}
 
       <Group justify="space-between" mt="md">
-        <Title order={4}>Расход</Title>
+        <Title order={4}>{t('llmp.usage')}</Title>
         <SegmentedControl
           size="xs"
           value={days}
           onChange={setDays}
           data={[
-            { value: '1', label: 'Сегодня' },
-            { value: '7', label: '7 дней' },
-            { value: '30', label: '30 дней' },
-            { value: '90', label: '90 дней' },
+            { value: '1', label: t('llmp.today') },
+            { value: '7', label: t('llmp.days7') },
+            { value: '30', label: t('llmp.days30') },
+            { value: '90', label: t('llmp.days90') },
           ]}
         />
       </Group>
       <Text size="sm" c="dimmed">
-        «OpenRouter» списано с баланса OpenRouter. «Свои ключи» оплачено вашими ключами у провайдеров (BYOK), если
-        OpenRouter отправил запрос через них. Суммы в долларах, как считают провайдеры. Учитываются запросы с момента
-        включения учёта.
+        {t('llmp.usage_hint')}
       </Text>
       {!u ? (
         <Loader size="sm" />
       ) : u.total.calls === 0 ? (
-        <Text c="dimmed">Запросов за период не было.</Text>
+        <Text c="dimmed">{t('llmp.no_calls')}</Text>
       ) : (
         <>
           <SimpleGrid cols={{ base: 2, md: 4 }}>
             {[
-              ['Запросов', String(u.total.calls)],
-              ['Ошибок', String(u.total.failed)],
-              ['OpenRouter', usd(u.total.cost)],
-              ['Свои ключи', usd(u.total.byok_cost)],
+              [t('llmp.col_calls'), String(u.total.calls)],
+              [t('llmp.col_failed'), String(u.total.failed)],
+              [t('llmp.col_openrouter'), usd(u.total.cost)],
+              [t('llmp.col_own'), usd(u.total.byok_cost)],
             ].map(([label, value]) => (
               <Card withBorder padding="sm" key={label}>
                 <Text size="xs" c="dimmed">
@@ -236,16 +236,16 @@ export function LLMPanel() {
                 <Tooltip formatter={(v) => usd(Number(v))} labelFormatter={(d) => String(d)} />
                 <Legend />
                 <Bar dataKey="cost" name="OpenRouter" stackId="a" fill={p.series[0]} />
-                <Bar dataKey="byok_cost" name="Свои ключи" stackId="a" fill={p.series[1]} />
+                <Bar dataKey="byok_cost" name={t('llmp.col_own')} stackId="a" fill={p.series[1]} />
               </BarChart>
             </ResponsiveContainer>
           )}
-          <Title order={5}>По задачам</Title>
-          <UsageTable first="Задача" rows={u.by_task.map((r) => ({ ...r, name: r.label }))} />
-          <Title order={5}>По моделям</Title>
+          <Title order={5}>{t('llmp.by_task')}</Title>
+          <UsageTable first={t('llmp.task')} rows={u.by_task.map((r) => ({ ...r, name: r.label }))} />
+          <Title order={5}>{t('llmp.by_model')}</Title>
           <UsageTable
-            first="Модель"
-            rows={u.by_model.map((r) => ({ ...r, name: r.model, sub: r.provider ?? (r.failed === r.calls ? 'ошибка' : null) }))}
+            first={t('llmp.model')}
+            rows={u.by_model.map((r) => ({ ...r, name: r.model, sub: r.provider ?? (r.failed === r.calls ? t('llmp.error') : null) }))}
           />
         </>
       )}

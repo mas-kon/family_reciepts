@@ -8,8 +8,9 @@ from PIL import Image, ImageOps
 from sqlalchemy import select
 
 from app.clock import now_local
-from app.constants import PURCHASE_DEFAULT, Kind
+from app.constants import Kind, purchase_default
 from app.db.models import Item, Receipt, User
+from app.i18n import t
 from app.llm.client import LLMError
 from app.llm.prompt import receipt_system
 from app.llm.schema import ParsedReceipt
@@ -149,7 +150,7 @@ class RecognitionMixin(ServiceBase):
             )
         path = self.image_abspath(receipt)
         if not path or not path.exists():
-            return ProcessResult(receipt=receipt, error="У записи нет фото чека")
+            return ProcessResult(receipt=receipt, error=t("recognition.no_photo"))
 
         def load() -> Image.Image:
             img = ImageOps.exif_transpose(Image.open(path))
@@ -184,7 +185,7 @@ class RecognitionMixin(ServiceBase):
             res = await read(models)
         except LLMError as e:
             receipt.status = "failed"
-            receipt.review_reason = f"Нейросеть не ответила: {e}"[:2000]
+            receipt.review_reason = t("recognition.llm_down", error=e)[:2000]
             await self.session.commit()
             return ProcessResult(receipt=receipt, error=str(e))
 
@@ -192,7 +193,7 @@ class RecognitionMixin(ServiceBase):
         if not parsed.is_receipt and not qr:
             if keep_if_not_receipt:
                 receipt.status = "needs_review"
-                receipt.review_reason = "Нейросеть не распознала чек"
+                receipt.review_reason = t("recognition.llm_failed")
                 await self.session.commit()
                 return ProcessResult(receipt=receipt, not_receipt=True)
             await self.delete_receipt(receipt)
@@ -217,7 +218,7 @@ class RecognitionMixin(ServiceBase):
                     receipt.raw_llm_json = res2.raw
                     await self.apply_parsed(receipt, res2.data, matcher, qr)
                     if receipt.review_reason:
-                        receipt.review_reason += f"\n(перечитано моделью {res2.model})"
+                        receipt.review_reason += t("recognition.reread", model=res2.model)
 
         if not keep_if_not_receipt and (dup := await self.find_duplicate(receipt)):
             await self.delete_receipt(receipt)
@@ -303,11 +304,11 @@ class RecognitionMixin(ServiceBase):
         when = (qr.purchased_at if qr else None) or parsed.purchased_at or receipt.purchased_at or now_local()
         receipt.purchased_at = when
         if when > now_local() + timedelta(minutes=10):
-            reasons.append(f"Дата чека в будущем ({when:%d.%m.%Y %H:%M}), проверьте дату и время")
+            reasons.append(t("recognition.future_date", when=f"{when:%d.%m.%Y %H:%M}"))
         total = parsed.total
         if qr:
             if total is not None and abs(total - qr.amount) > tol:
-                reasons.append(f"Сумма в QR ({qr.amount:.2f}) не совпадает с итогом чека ({total:.2f})")
+                reasons.append(t("recognition.qr_mismatch", qr=f"{qr.amount:.2f}", total=f"{total:.2f}"))
             total = qr.amount
         receipt.total = round2(total)
 
@@ -344,17 +345,17 @@ class RecognitionMixin(ServiceBase):
 
         if not parsed.items and receipt.total is not None:
             # e.g. a greengrocer's receipt with only the total: book it as one line
-            name = receipt.note or receipt.store or PURCHASE_DEFAULT
+            name = receipt.note or receipt.store or purchase_default()
             receipt.items.append(single_item(name, receipt.total, await self.override_category(name)))
         elif not parsed.items:
-            reasons.append("Не найдено ни одной позиции")
+            reasons.append(t("recognition.no_items"))
         elif (receipt_total := receipt.total) is not None:
             items_sum = sum(i.total for i in parsed.items)
             if abs(items_sum - receipt_total) > tol:
-                reasons.append(f"Сумма позиций ({items_sum:.2f}) не совпадает с итогом ({receipt_total:.2f})")
+                reasons.append(t("recognition.sum_mismatch", items=f"{items_sum:.2f}", total=f"{receipt_total:.2f}"))
         if receipt.total is None:
             receipt.total = round2(sum(i.total for i in parsed.items))
-            reasons.append("Итог чека не найден, посчитан по позициям")
+            reasons.append(t("recognition.total_computed"))
 
         receipt.status = "needs_review" if reasons else "ok"
         receipt.review_reason = "\n".join(reasons) or None

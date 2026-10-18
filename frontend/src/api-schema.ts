@@ -754,6 +754,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/settings/language": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Language */
+        get: operations["get_language_api_settings_language_get"];
+        /** Put Language */
+        put: operations["put_language_api_settings_language_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/health": {
         parameters: {
             query?: never;
@@ -1029,6 +1047,25 @@ export interface components {
          * @enum {string}
          */
         Kind: "expense" | "income" | "transfer";
+        /** LanguageIn */
+        LanguageIn: {
+            /** Language */
+            language: string;
+        };
+        /** LanguageOption */
+        LanguageOption: {
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+        };
+        /** LanguageOut */
+        LanguageOut: {
+            /** Language */
+            language: string;
+            /** Options */
+            options: components["schemas"]["LanguageOption"][];
+        };
         /** Lines */
         Lines: {
             /** Lines */
@@ -3227,6 +3264,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MailStatus"];
+                };
+            };
+        };
+    };
+    get_language_api_settings_language_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LanguageOut"];
+                };
+            };
+        };
+    };
+    put_language_api_settings_language_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LanguageIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Ok"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

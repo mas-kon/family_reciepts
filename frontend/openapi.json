@@ -2312,6 +2312,66 @@
     }
    }
   },
+  "/api/settings/language": {
+   "get": {
+    "tags": [
+     "settings"
+    ],
+    "summary": "Get Language",
+    "operationId": "get_language_api_settings_language_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/LanguageOut"
+        }
+       }
+      }
+     }
+    }
+   },
+   "put": {
+    "tags": [
+     "settings"
+    ],
+    "summary": "Put Language",
+    "operationId": "put_language_api_settings_language_put",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/LanguageIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Ok"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
   "/api/health": {
    "get": {
     "summary": "Health",
@@ -3169,6 +3229,58 @@
     ],
     "title": "Kind",
     "description": "What a record is. Only EXPENSE counts as spending; TRANSFER is money moved inside the family."
+   },
+   "LanguageIn": {
+    "properties": {
+     "language": {
+      "type": "string",
+      "title": "Language"
+     }
+    },
+    "type": "object",
+    "required": [
+     "language"
+    ],
+    "title": "LanguageIn"
+   },
+   "LanguageOption": {
+    "properties": {
+     "code": {
+      "type": "string",
+      "title": "Code"
+     },
+     "name": {
+      "type": "string",
+      "title": "Name"
+     }
+    },
+    "type": "object",
+    "required": [
+     "code",
+     "name"
+    ],
+    "title": "LanguageOption"
+   },
+   "LanguageOut": {
+    "properties": {
+     "language": {
+      "type": "string",
+      "title": "Language"
+     },
+     "options": {
+      "items": {
+       "$ref": "#/components/schemas/LanguageOption"
+      },
+      "type": "array",
+      "title": "Options"
+     }
+    },
+    "type": "object",
+    "required": [
+     "language",
+     "options"
+    ],
+    "title": "LanguageOut"
    },
    "Lines": {
     "properties": {

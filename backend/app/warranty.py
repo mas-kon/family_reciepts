@@ -12,6 +12,7 @@ from app.clock import now_local
 from app.config import get_settings
 from app.db.models import Item, Receipt
 from app.db.session import session_factory
+from app.i18n import t
 
 log = logging.getLogger(__name__)
 
@@ -41,11 +42,12 @@ async def remind(bot) -> int:
     async with session_factory()() as session:
         for item, receipt in await due_items(session, s.warranty_remind_days):
             bought = f"{receipt.purchased_at:%d.%m.%Y}" if receipt.purchased_at else "—"
-            text = (
-                f"🛡 {item.warranty_until:%d.%m.%Y} заканчивается гарантия: "
-                f"<b>{html.escape(item.name_ru or item.name_original)}</b>\n"
-                f"Куплено {bought}{', ' + html.escape(receipt.store) if receipt.store else ''}. "
-                "Если что-то не так с вещью, самое время обратиться по гарантии."
+            text = t(
+                "warranty.reminder",
+                date=f"{item.warranty_until:%d.%m.%Y}",
+                name=html.escape(item.name_ru or item.name_original),
+                bought=bought,
+                store=", " + html.escape(receipt.store) if receipt.store else "",
             )
             await bot.send_message(chat, text, reply_markup=receipt_keyboard(receipt.id))
             sent += 1

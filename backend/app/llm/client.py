@@ -24,6 +24,7 @@ from app.llm.prompt import (
     BANK_SYSTEM,
     PRODUCTS_SYSTEM,
     VOICE_USER,
+    localize,
     products_user,
     receipt_text_user,
     receipt_user,
@@ -189,7 +190,7 @@ class LLMClient:
 
     async def group_products(self, names: list[str], known: list[str]):
         messages = [
-            {"role": "system", "content": PRODUCTS_SYSTEM},
+            {"role": "system", "content": localize(PRODUCTS_SYSTEM)},
             {"role": "user", "content": products_user(names, known)},
         ]
         return await self.structured(messages, ParsedProducts, self.settings.text_models, "products")

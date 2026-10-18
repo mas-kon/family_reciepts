@@ -17,8 +17,9 @@ from app.constants import Kind
 from app.db.models import Category, Item, Receipt, User
 from app.db.session import icontains
 from app.family import find_user
+from app.i18n import t
 from app.llm.client import LLMClient, LLMError, get_llm
-from app.llm.prompt import ASK_SYSTEM
+from app.llm.prompt import ASK_SYSTEM, localize
 from app.products import with_alias
 from app.receipts.text import leaf_categories
 from app.stats import PRODUCT_KEY, monthly, summary
@@ -81,7 +82,7 @@ TOOLS = [
             "name": "search_purchases",
             "description": "Поиск покупок по названию товара, магазину или описанию. Возвращает "
             "сумму, количество и последние покупки с датой, магазином и ценой. Ищи по корню слова "
-            "по-русски и по-болгарски, например 'молок' и 'мляко'.",
+            "на {lang} и по-болгарски (названия в чеках).",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -201,6 +202,11 @@ HANDLERS = {
 }
 
 
+def _tools() -> list[dict]:
+    """The tool descriptions with the family's language filled in."""
+    return json.loads(json.dumps(TOOLS).replace("{lang}", t("prompt.lang")))
+
+
 async def answer(
     session: AsyncSession, question: str, history: list[dict] | None = None, llm: LLMClient | None = None
 ) -> dict:
@@ -208,9 +214,9 @@ async def answer(
     cats = ", ".join(
         leaf_categories(list(await session.scalars(select(Category).where(Category.kind == Kind.EXPENSE))))
     )
-    family = ", ".join(u.name for u in await session.scalars(select(User))) or "нет"
+    family = ", ".join(u.name for u in await session.scalars(select(User))) or t("voice.nobody")
     system = (
-        ASK_SYSTEM.replace("{today}", f"{now_local():%Y-%m-%d}")
+        localize(ASK_SYSTEM).replace("{today}", f"{now_local():%Y-%m-%d}")
         .replace("{categories}", cats)
         .replace("{family}", family)
     )
@@ -223,10 +229,10 @@ async def answer(
     used: list[str] = []
     model = None
     for _ in range(MAX_STEPS):
-        msg, model = await llm.chat_tools(messages, TOOLS, get_settings().ask_models)
+        msg, model = await llm.chat_tools(messages, _tools(), get_settings().ask_models)
         calls = msg.tool_calls or []
         if not calls:
-            return {"answer": (msg.content or "").strip() or "Не получилось ответить.", "model": model, "tools": used}
+            return {"answer": (msg.content or "").strip() or t("ask.no_answer"), "model": model, "tools": used}
         messages.append(
             {
                 "role": "assistant",
@@ -246,10 +252,10 @@ async def answer(
             handler = HANDLERS.get(c.function.name)
             try:
                 args = json.loads(c.function.arguments or "{}")
-                result = await handler(session, **args) if handler else {"error": "нет такой функции"}
+                result = await handler(session, **args) if handler else {"error": "unknown function"}
             except Exception as e:  # bad arguments from the model
                 log.warning("tool %s failed: %s", c.function.name, e)
                 result = {"error": str(e)[:300]}
             content = json.dumps(result, ensure_ascii=False, default=str)[:MAX_TOOL_CHARS]
             messages.append({"role": "tool", "tool_call_id": c.id, "content": content})
-    raise LLMError("Слишком много шагов, вопрос не удалось разобрать")
+    raise LLMError(t("ask.too_many_steps"))

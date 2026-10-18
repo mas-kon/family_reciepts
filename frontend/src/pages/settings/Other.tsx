@@ -2,80 +2,85 @@ import { Alert, Badge, Button, Card, Code, Group, Stack, Text, TextInput, Title 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import dayjs from 'dayjs'
 import { useState } from 'react'
+import { Trans, useTranslation } from 'react-i18next'
 import { api, qs, type MailStatus } from '../../api'
 import { dateTime } from '../../format'
 import { notifyError, notifyOk } from '../../hooks'
 
 export default function Other() {
+  const { t } = useTranslation()
   const qc = useQueryClient()
   const mail = useQuery({ queryKey: ['mail-status'], queryFn: () => api<MailStatus>('/mail/status'), refetchInterval: 60_000 })
   const check = useMutation({
     mutationFn: () => api<MailStatus>('/mail/check', { method: 'POST' }),
     onSuccess: (r) => {
       qc.setQueryData(['mail-status'], r)
-      if (r.ok) notifyOk('Ящик читается')
+      if (r.ok) notifyOk(t('other.mail_ok'))
     },
     onError: notifyError,
   })
   const [month, setMonth] = useState(dayjs().subtract(1, 'month').format('YYYY-MM'))
   const send = useMutation({
     mutationFn: () => api(`/reports/send${qs({ month })}`, { method: 'POST' }),
-    onSuccess: () => notifyOk('Отчёт отправлен в группу'),
+    onSuccess: () => notifyOk(t('other.report_sent')),
     onError: notifyError,
   })
   return (
     <Stack>
       <Card withBorder>
         <Title order={5} mb="xs">
-          Месячный отчёт
+          {t('other.report_title')}
         </Title>
         <Text size="sm" c="dimmed" mb="sm">
-          Отправляется в группу автоматически 1-го числа в 9:00. Можно отправить вручную.
+          {t('other.report_hint')}
         </Text>
         <Group align="flex-end">
-          <TextInput type="month" label="Месяц" value={month} onChange={(e) => setMonth(e.currentTarget.value)} />
+          <TextInput type="month" label={t('other.month')} value={month} onChange={(e) => setMonth(e.currentTarget.value)} />
           <Button onClick={() => send.mutate()} loading={send.isPending}>
-            Отправить в группу
+            {t('other.send')}
           </Button>
         </Group>
       </Card>
       <Card withBorder>
         <Group justify="space-between" mb="xs">
-          <Title order={5}>Чеки по почте</Title>
+          <Title order={5}>{t('other.mail_title')}</Title>
           {mail.data?.enabled && (
             <Badge
               variant="light"
               color={mail.data.ok === null ? 'gray' : mail.data.ok ? 'teal' : 'red'}
             >
-              {mail.data.ok === null ? 'ещё не проверялась' : mail.data.ok ? 'подключена' : 'ошибка'}
+              {mail.data.ok === null ? t('other.mail_unchecked') : mail.data.ok ? t('other.mail_connected') : t('other.mail_error')}
             </Badge>
           )}
         </Group>
         {mail.data?.enabled ? (
           <Stack gap="xs">
             <Text size="sm">
-              Ящик <Code>{mail.data.address}</Code> на <Code>{mail.data.host}</Code>. Пересылайте на него электронные
-              чеки: бот проверяет ящик раз в {mail.data.poll_minutes} мин. и пишет о каждом чеке в группу.
+              <Trans
+                i18nKey="other.mail_text"
+                values={{ address: mail.data.address, host: mail.data.host, minutes: mail.data.poll_minutes }}
+                components={{ code: <Code /> }}
+              />
             </Text>
             {mail.data.checked_at && (
               <Text size="xs" c="dimmed">
-                Последняя проверка: {dateTime(mail.data.checked_at)}. Чеков из почты с запуска: {mail.data.received}.
+                {t('other.mail_checked', { when: dateTime(mail.data.checked_at), count: mail.data.received })}
               </Text>
             )}
             {mail.data.error && (
-              <Alert color="red" title="Не удалось прочитать ящик">
+              <Alert color="red" title={t('other.mail_failed')}>
                 <Text size="sm">{mail.data.error}</Text>
                 {mail.data.hint && <Text size="sm">{mail.data.hint}</Text>}
               </Alert>
             )}
             <Group>
               <Button size="xs" variant="default" onClick={() => check.mutate()} loading={check.isPending}>
-                Проверить подключение
+                {t('other.mail_check')}
               </Button>
             </Group>
           </Stack>
         ) : (
-          <Text size="sm">Выключено. Чтобы включить, задайте IMAP_HOST, IMAP_USER и IMAP_PASSWORD в .env.</Text>
+          <Text size="sm">{t('other.mail_disabled')}</Text>
         )}
       </Card>
     </Stack>

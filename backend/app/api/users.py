@@ -8,6 +8,7 @@ from app.api.schemas import Ok
 from app.db.models import Receipt, User
 from app.db.session import get_session
 from app.family import apply_family_names
+from app.i18n import t
 
 router = APIRouter(prefix="/api", tags=["users"], dependencies=[Depends(current_viewer)])
 
@@ -93,7 +94,7 @@ async def create_user(data: UserIn, session: AsyncSession = Depends(get_session)
 async def update_user(uid: int, data: UserPatch, session: AsyncSession = Depends(get_session)):
     u = await session.get(User, uid)
     if not u:
-        raise HTTPException(404, "Член семьи не найден")
+        raise HTTPException(404, t("api.member_not_found"))
     fields = data.model_dump(exclude_unset=True)
     if fields.get("name"):
         u.name = fields["name"].strip()
@@ -117,7 +118,7 @@ async def delete_user(uid: int, session: AsyncSession = Depends(get_session)):
         return Ok()
     used = await session.scalar(select(func.count(Receipt.id)).where(Receipt.user_id == uid))
     if used:
-        raise HTTPException(409, f"На этого человека записано трат: {used}. Сначала перенесите их.")
+        raise HTTPException(409, t("api.member_has_expenses", count=used))
     await session.delete(u)
     await session.commit()
     return Ok()

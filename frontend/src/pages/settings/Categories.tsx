@@ -2,10 +2,12 @@ import { ActionIcon, Button, Group, Select, Stack, Table, Text, TextInput, Title
 import { IconPencil, IconTrash } from '@tabler/icons-react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { api, type Category } from '../../api'
 import { notifyError, useCategories } from '../../hooks'
 
 export default function Categories() {
+  const { t } = useTranslation()
   const qc = useQueryClient()
   const cats = useCategories()
   const [name, setName] = useState('')
@@ -66,10 +68,10 @@ export default function Categories() {
       </Table.Td>
       <Table.Td w={90}>
         <Group gap={2} wrap="nowrap">
-          <ActionIcon variant="subtle" size="sm" aria-label="Переименовать" onClick={() => setEditing(c)}>
+          <ActionIcon variant="subtle" size="sm" aria-label={t('categories.rename')} onClick={() => setEditing(c)}>
             <IconPencil size={14} />
           </ActionIcon>
-          <ActionIcon variant="subtle" size="sm" color="red" aria-label="Удалить" onClick={() => confirm(`Удалить категорию «${c.name}»?`) && del.mutate(c.id)}>
+          <ActionIcon variant="subtle" size="sm" color="red" aria-label={t('common.delete')} onClick={() => confirm(t('categories.delete_confirm', { name: c.name })) && del.mutate(c.id)}>
             <IconTrash size={14} />
           </ActionIcon>
         </Group>
@@ -80,13 +82,13 @@ export default function Categories() {
   return (
     <Stack>
       <Text size="sm" c="dimmed">
-        Нейросеть выбирает категорию из этого списка. Удалить можно только неиспользуемую категорию.
+        {t('categories.hint')}
       </Text>
       <Group align="flex-end">
-        <TextInput label="Новая категория" value={name} onChange={(e) => setName(e.currentTarget.value)} w={240} />
+        <TextInput label={t('categories.new')} value={name} onChange={(e) => setName(e.currentTarget.value)} w={240} />
         <Select
-          label="Внутри"
-          placeholder="Верхний уровень"
+          label={t('categories.inside')}
+          placeholder={t('categories.top_level')}
           clearable
           w={220}
           value={parent}
@@ -94,7 +96,7 @@ export default function Categories() {
           data={parents.map((p) => ({ value: String(p.id), label: p.name }))}
         />
         <Button onClick={() => create.mutate()} disabled={!name} loading={create.isPending}>
-          Добавить
+          {t('common.add')}
         </Button>
       </Group>
       <Table maw={520}>
@@ -104,16 +106,15 @@ export default function Categories() {
       </Table>
 
       <Title order={4} mt="md">
-        Категории доходов
+        {t('categories.income_title')}
       </Title>
       <Text size="sm" c="dimmed">
-        Доход получает категорию по описанию: «зарплата» попадёт в «Зарплату», «возврат» в «Возвраты». Остальное в
-        «Прочие доходы», категорию можно поменять в записи.
+        {t('categories.income_hint')}
       </Text>
       <Group align="flex-end">
-        <TextInput label="Новая категория дохода" value={incomeName} onChange={(e) => setIncomeName(e.currentTarget.value)} w={240} />
+        <TextInput label={t('categories.new_income')} value={incomeName} onChange={(e) => setIncomeName(e.currentTarget.value)} w={240} />
         <Button onClick={() => createIncome.mutate()} disabled={!incomeName} loading={createIncome.isPending}>
-          Добавить
+          {t('common.add')}
         </Button>
       </Group>
       <Table maw={520}>

@@ -11,6 +11,7 @@ from app.api.schemas import Ok
 from app.config import get_settings
 from app.db.models import Item, ProductAlias, Receipt
 from app.db.session import get_session, icontains
+from app.i18n import t
 from app.products import with_alias
 from app.scheduler import send_monthly_report
 from app.stats import PRODUCT_KEY, monthly, summary
@@ -175,6 +176,6 @@ async def product_prices(key: str, session: AsyncSession = Depends(get_session))
 async def send_report(request: Request, month: str | None = Query(None, pattern=r"^\d{4}-(0[1-9]|1[0-2])$")):
     bot = getattr(request.app.state, "bot", None)
     if not bot or not get_settings().notify_chat_id:
-        raise HTTPException(400, "Бот не запущен или не задан чат для отчётов")
+        raise HTTPException(400, t("api.no_bot"))
     await send_monthly_report(bot, month)
     return Ok()

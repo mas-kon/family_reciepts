@@ -35,9 +35,10 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import dayjs from 'dayjs'
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api, type Item, type Kind, type ReceiptDetail } from '../api'
-import { categoryOptions, dateOnly, dateTime, kindMoney, money, SOURCE_LABEL, sourceLabel, STATUS_LABEL } from '../format'
+import { categoryOptions, dateOnly, dateTime, kindMoney, money, sourceLabel, sourceName, statusLabel } from '../format'
 import { notifyError, notifyOk, useCategories, useMeta, useUsers, invalidateRecords } from '../hooks'
 
 type ItemDraft = Pick<Item, 'name_original' | 'name_ru' | 'qty' | 'unit_price' | 'total' | 'warranty_until'>
@@ -53,6 +54,7 @@ function ItemRow({
   remember: boolean
   onSaved: (r: ReceiptDetail) => void
 }) {
+  const { t } = useTranslation()
   const cats = useCategories()
   const [edit, setEdit] = useState(false)
   const [d, setD] = useState<ItemDraft>(item)
@@ -76,7 +78,7 @@ function ItemRow({
     <Select
       size="xs"
       searchable
-      placeholder="Без категории"
+      placeholder={t('category.none')}
       value={item.category_id ? String(item.category_id) : null}
       // the remembered category is a shop product's; incomes are not remembered
       onChange={(v) => v && patch.mutate({ category_id: Number(v), remember: remember && kind === 'expense' })}
@@ -84,7 +86,7 @@ function ItemRow({
       disabled={kind === 'transfer'}
       allowDeselect={false}
       w={200}
-      aria-label="Категория"
+      aria-label={t('receipt.col_category')}
     />
   )
 
@@ -100,7 +102,7 @@ function ItemRow({
           )}
           {item.warranty_until && (
             <Text size="xs" c="teal">
-              🛡 гарантия до {dateOnly(item.warranty_until)}
+              {t('receipt.warranty_until', { date: dateOnly(item.warranty_until) })}
             </Text>
           )}
         </Table.Td>
@@ -112,10 +114,10 @@ function ItemRow({
         <Table.Td>{category}</Table.Td>
         <Table.Td>
           <Group gap={2} wrap="nowrap">
-            <ActionIcon variant="subtle" size="sm" aria-label="Изменить" onClick={() => setEdit(true)}>
+            <ActionIcon variant="subtle" size="sm" aria-label={t('receipt.edit')} onClick={() => setEdit(true)}>
               <IconPencil size={14} />
             </ActionIcon>
-            <ActionIcon variant="subtle" color="red" size="sm" aria-label="Удалить" onClick={() => confirm('Удалить позицию?') && del.mutate()} loading={del.isPending}>
+            <ActionIcon variant="subtle" color="red" size="sm" aria-label={t('common.delete')} onClick={() => confirm(t('receipt.delete_item_confirm')) && del.mutate()} loading={del.isPending}>
               <IconTrash size={14} />
             </ActionIcon>
           </Group>
@@ -128,12 +130,12 @@ function ItemRow({
     <Table.Tr>
       <Table.Td>
         <Stack gap={4}>
-          <TextInput size="xs" value={d.name_ru ?? ''} placeholder="По-русски" onChange={(e) => setD({ ...d, name_ru: e.currentTarget.value })} />
-          <TextInput size="xs" value={d.name_original} placeholder="Как в чеке" onChange={(e) => setD({ ...d, name_original: e.currentTarget.value })} />
+          <TextInput size="xs" value={d.name_ru ?? ''} placeholder={t('receipt.name_translated')} onChange={(e) => setD({ ...d, name_ru: e.currentTarget.value })} />
+          <TextInput size="xs" value={d.name_original} placeholder={t('receipt.name_original')} onChange={(e) => setD({ ...d, name_original: e.currentTarget.value })} />
           <TextInput
             size="xs"
             type="date"
-            aria-label="Гарантия до"
+            aria-label={t('receipt.warranty_input')}
             leftSection={<Text size="xs">🛡</Text>}
             value={d.warranty_until ?? ''}
             onChange={(e) => setD({ ...d, warranty_until: e.currentTarget.value || null })}
@@ -152,10 +154,10 @@ function ItemRow({
       <Table.Td>{category}</Table.Td>
       <Table.Td>
         <Group gap={2} wrap="nowrap">
-          <ActionIcon variant="subtle" color="teal" size="sm" aria-label="Сохранить" onClick={() => patch.mutate(d)} loading={patch.isPending}>
+          <ActionIcon variant="subtle" color="teal" size="sm" aria-label={t('common.save')} onClick={() => patch.mutate(d)} loading={patch.isPending}>
             <IconCheck size={14} />
           </ActionIcon>
-          <ActionIcon variant="subtle" size="sm" aria-label="Отмена" onClick={() => { setD(item); setEdit(false) }}>
+          <ActionIcon variant="subtle" size="sm" aria-label={t('common.cancel')} onClick={() => { setD(item); setEdit(false) }}>
             <IconX size={14} />
           </ActionIcon>
         </Group>
@@ -167,6 +169,7 @@ function ItemRow({
 /** Expense / income / transfer inside the family. A transfer asks for the family member and
  * can remember the bank's name for them, so their transfers are never counted as spending. */
 function KindControl({ r, onSaved }: { r: ReceiptDetail; onSaved: (r: ReceiptDetail) => void }) {
+  const { t } = useTranslation()
   const users = useUsers()
   const qc = useQueryClient()
   const [asking, setAsking] = useState(false)
@@ -179,7 +182,7 @@ function KindControl({ r, onSaved }: { r: ReceiptDetail; onSaved: (r: ReceiptDet
       setAsking(false)
       onSaved(x)
       invalidateRecords(qc)
-      if (body.remember_peer) notifyOk(`Переводы «${r.counterparty}» теперь всегда внутри семьи`)
+      if (body.remember_peer) notifyOk(t('receipt.peer_remembered', { name: r.counterparty }))
     },
     onError: notifyError,
   })
@@ -190,20 +193,19 @@ function KindControl({ r, onSaved }: { r: ReceiptDetail; onSaved: (r: ReceiptDet
         value={r.kind}
         onChange={(v) => (v === 'transfer' ? setAsking(true) : save.mutate({ kind: v as Kind }))}
         data={[
-          { value: 'expense', label: 'Расход' },
-          { value: 'income', label: 'Доход' },
-          { value: 'transfer', label: 'Внутри семьи' },
+          { value: 'expense', label: t('kind.expense') },
+          { value: 'income', label: t('kind.income') },
+          { value: 'transfer', label: t('kind.transfer') },
         ]}
       />
-      <Modal opened={asking} onClose={() => setAsking(false)} title="Перевод внутри семьи">
+      <Modal opened={asking} onClose={() => setAsking(false)} title={t('receipt.transfer_title')}>
         <Stack>
           <Text size="sm">
-            Деньги остались в семье: такой перевод не войдёт ни в расходы, ни в доходы. Например, карманные деньги
-            ребёнку: он потратит их сам, и эти траты уже будут учтены.
+            {t('receipt.transfer_text')}
           </Text>
           <Select
-            label="Кому или от кого"
-            placeholder="Член семьи"
+            label={t('receipt.transfer_peer')}
+            placeholder={t('receipt.family_member')}
             value={peer}
             onChange={setPeer}
             data={(users.data ?? []).map((u) => ({ value: String(u.id), label: u.name }))}
@@ -213,12 +215,12 @@ function KindControl({ r, onSaved }: { r: ReceiptDetail; onSaved: (r: ReceiptDet
             <Checkbox
               checked={rememberPeer}
               onChange={(e) => setRememberPeer(e.currentTarget.checked)}
-              label={`Запомнить: «${r.counterparty}» это этот член семьи. Его переводы, прошлые и будущие, будут внутри семьи.`}
+              label={t('receipt.remember_peer', { name: r.counterparty })}
             />
           )}
           <Group justify="flex-end">
             <Button variant="default" onClick={() => setAsking(false)}>
-              Отмена
+              {t('common.cancel')}
             </Button>
             <Button
               loading={save.isPending}
@@ -230,7 +232,7 @@ function KindControl({ r, onSaved }: { r: ReceiptDetail; onSaved: (r: ReceiptDet
                 })
               }
             >
-              Сохранить
+              {t('common.save')}
             </Button>
           </Group>
         </Stack>
@@ -240,6 +242,7 @@ function KindControl({ r, onSaved }: { r: ReceiptDetail; onSaved: (r: ReceiptDet
 }
 
 function HeaderForm({ r, onSaved, onCancel }: { r: ReceiptDetail; onSaved: (r: ReceiptDetail) => void; onCancel: () => void }) {
+  const { t } = useTranslation()
   const users = useUsers()
   const [v, setV] = useState({
     store: r.store ?? '',
@@ -259,17 +262,17 @@ function HeaderForm({ r, onSaved, onCancel }: { r: ReceiptDetail; onSaved: (r: R
   })
   return (
     <Stack gap="xs">
-      <TextInput label="Магазин" value={v.store} onChange={(e) => setV({ ...v, store: e.currentTarget.value })} />
-      <TextInput label="Дата" type="datetime-local" value={v.purchased_at} onChange={(e) => setV({ ...v, purchased_at: e.currentTarget.value })} />
-      <NumberInput label="Итог, €" value={v.total} decimalScale={2} onChange={(x) => setV({ ...v, total: Number(x) })} />
-      <Select label="Кто" clearable value={v.user_id} onChange={(x) => setV({ ...v, user_id: x })} data={(users.data ?? []).map((u) => ({ value: String(u.id), label: u.name }))} />
-      <Textarea label="Описание" description="У записи из одной строки описание станет её названием" value={v.note} onChange={(e) => setV({ ...v, note: e.currentTarget.value })} autosize minRows={1} />
+      <TextInput label={t('receipt.store')} value={v.store} onChange={(e) => setV({ ...v, store: e.currentTarget.value })} />
+      <TextInput label={t('receipt.date')} type="datetime-local" value={v.purchased_at} onChange={(e) => setV({ ...v, purchased_at: e.currentTarget.value })} />
+      <NumberInput label={t('receipt.total_eur')} value={v.total} decimalScale={2} onChange={(x) => setV({ ...v, total: Number(x) })} />
+      <Select label={t('receipt.who')} clearable value={v.user_id} onChange={(x) => setV({ ...v, user_id: x })} data={(users.data ?? []).map((u) => ({ value: String(u.id), label: u.name }))} />
+      <Textarea label={t('receipt.note')} description={t('receipt.note_hint')} value={v.note} onChange={(e) => setV({ ...v, note: e.currentTarget.value })} autosize minRows={1} />
       <Group justify="flex-end">
         <Button variant="default" onClick={onCancel}>
-          Отмена
+          {t('common.cancel')}
         </Button>
         <Button onClick={() => save.mutate()} loading={save.isPending}>
-          Сохранить
+          {t('common.save')}
         </Button>
       </Group>
     </Stack>
@@ -277,6 +280,7 @@ function HeaderForm({ r, onSaved, onCancel }: { r: ReceiptDetail; onSaved: (r: R
 }
 
 export default function ReceiptDetailPage() {
+  const { t } = useTranslation()
   const { id } = useParams()
   const navigate = useNavigate()
   const qc = useQueryClient()
@@ -302,13 +306,13 @@ export default function ReceiptDetailPage() {
     mutationFn: () => api<ReceiptDetail>(`/receipts/${id}/reprocess`, { method: 'POST', json: { model } }),
     onSuccess: (r) => {
       update(r)
-      notifyOk(r.status === 'failed' ? 'Нейросеть не ответила' : 'Чек распознан заново')
+      notifyOk(r.status === 'failed' ? t('receipt.reprocess_failed') : t('receipt.reprocessed'))
     },
     onError: notifyError,
   })
   const addItem = useMutation({
     mutationFn: () =>
-      api<ReceiptDetail>(`/receipts/${id}/items`, { method: 'POST', json: { name_original: 'Новая позиция', total: 0 } }),
+      api<ReceiptDetail>(`/receipts/${id}/items`, { method: 'POST', json: { name_original: t('receipt.new_item'), total: 0 } }),
     onSuccess: update,
     onError: notifyError,
   })
@@ -322,7 +326,7 @@ export default function ReceiptDetailPage() {
   })
 
   if (q.isLoading) return <Loader />
-  if (!q.data) return <Alert color="red">Чек не найден</Alert>
+  if (!q.data) return <Alert color="red">{t('receipt.not_found')}</Alert>
   const r = q.data
   const diff = r.total !== null ? Math.round((r.items_sum - r.total) * 100) / 100 : 0
   const imgUrl = `/api/receipts/${r.id}/image`
@@ -331,28 +335,28 @@ export default function ReceiptDetailPage() {
     <Stack>
       <Group justify="space-between">
         <Group gap="xs">
-          <ActionIcon variant="subtle" component={Link} to="/receipts" aria-label="Назад">
+          <ActionIcon variant="subtle" component={Link} to="/receipts" aria-label={t('receipt.back')}>
             <IconArrowLeft size={18} />
           </ActionIcon>
-          <Title order={3}>{r.store || SOURCE_LABEL[r.source]}</Title>
-          <Badge color={STATUS_LABEL[r.status]?.color} variant="light">
-            {STATUS_LABEL[r.status]?.label}
+          <Title order={3}>{r.store || sourceName(r.source)}</Title>
+          <Badge color={statusLabel(r.status).color} variant="light">
+            {statusLabel(r.status).label}
           </Badge>
         </Group>
         <Group gap="xs">
           {r.status !== 'ok' && (
             <Button size="xs" color="teal" leftSection={<IconCheck size={14} />} onClick={() => status.mutate('ok')} loading={status.isPending}>
-              Всё верно
+              {t('receipt.all_good')}
             </Button>
           )}
           <Button size="xs" variant="default" color="red" leftSection={<IconTrash size={14} />} onClick={confirmCtl.open}>
-            Удалить
+            {t('common.delete')}
           </Button>
         </Group>
       </Group>
 
       {r.review_reason && (
-        <Alert color={r.status === 'failed' ? 'red' : 'yellow'} title="Что проверить">
+        <Alert color={r.status === 'failed' ? 'red' : 'yellow'} title={t('receipt.check')}>
           <Text size="sm" style={{ whiteSpace: 'pre-line' }}>
             {r.review_reason}
           </Text>
@@ -364,25 +368,25 @@ export default function ReceiptDetailPage() {
           <Grid.Col span={{ base: 12, md: 5 }}>
             <Card withBorder padding="xs">
               <a href={imgUrl} target="_blank" rel="noreferrer">
-                <img src={imgUrl} alt="Фото чека" className="receipt-image" />
+                <img src={imgUrl} alt={t('receipt.photo')} className="receipt-image" />
               </a>
               <Group mt="xs" gap="xs" align="flex-end">
                 <Select
                   size="xs"
-                  placeholder="Модели из настроек"
+                  placeholder={t('receipt.models_placeholder')}
                   clearable
                   value={model}
                   onChange={setModel}
                   data={meta.data?.models ?? []}
                   style={{ flex: 1 }}
-                  aria-label="Модель"
+                  aria-label={t('receipt.model')}
                 />
                 <Button size="xs" variant="light" leftSection={<IconRefresh size={14} />} onClick={() => reprocess.mutate()} loading={reprocess.isPending}>
-                  Распознать заново
+                  {t('receipt.reprocess')}
                 </Button>
               </Group>
               <Text size="xs" c="dimmed" mt={4}>
-                Повторное распознавание заменит все позиции.
+                {t('receipt.reprocess_hint')}
               </Text>
             </Card>
           </Grid.Col>
@@ -408,17 +412,17 @@ export default function ReceiptDetailPage() {
                     <KindControl r={r} onSaved={update} />
                     {r.kind === 'transfer' && (
                       <Text size="sm" c="dimmed">
-                        Перевод внутри семьи{r.peer_name ? `: ${r.peer_name}` : ''}. В расходы и доходы не входит.
+                        {t('receipt.transfer_note', { peer: r.peer_name ? `: ${r.peer_name}` : '' })}
                       </Text>
                     )}
                     <Text size="sm">{dateTime(r.purchased_at)}</Text>
                     <Text size="sm" c="dimmed">
-                      {r.user_name ?? 'Кто — не указано'} · {sourceLabel(r)}
+                      {r.user_name ?? t('receipt.who_unset')} · {sourceLabel(r)}
                       {r.llm_model && ` · ${r.llm_model}`}
                     </Text>
                     {r.import_id && (
                       <Anchor component={Link} to={`/receipts?import_id=${encodeURIComponent(r.import_id)}`} size="sm">
-                        Все записи этой выписки
+                        {t('receipt.import_all')}
                       </Anchor>
                     )}
                     {r.note && (
@@ -427,7 +431,7 @@ export default function ReceiptDetailPage() {
                       </Text>
                     )}
                   </Stack>
-                  <ActionIcon variant="subtle" aria-label="Изменить" onClick={() => setEditHeader(true)}>
+                  <ActionIcon variant="subtle" aria-label={t('receipt.edit')} onClick={() => setEditHeader(true)}>
                     <IconPencil size={16} />
                   </ActionIcon>
                 </Group>
@@ -436,20 +440,20 @@ export default function ReceiptDetailPage() {
 
             <Card withBorder padding="md">
               <Group justify="space-between" mb="xs">
-                <Title order={5}>Позиции</Title>
-                <Tooltip label="Новая категория применится к этому товару во всех чеках и будущих покупках" multiline w={260}>
-                  <Switch size="xs" label="Запоминать категорию" checked={remember} onChange={(e) => setRemember(e.currentTarget.checked)} />
+                <Title order={5}>{t('receipt.items')}</Title>
+                <Tooltip label={t('receipt.remember_tooltip')} multiline w={260}>
+                  <Switch size="xs" label={t('receipt.remember_category')} checked={remember} onChange={(e) => setRemember(e.currentTarget.checked)} />
                 </Tooltip>
               </Group>
               <Table.ScrollContainer minWidth={640}>
                 <Table verticalSpacing={6} fz="sm">
                   <Table.Thead>
                     <Table.Tr>
-                      <Table.Th>Товар</Table.Th>
-                      <Table.Th className="num">Кол-во</Table.Th>
-                      <Table.Th className="num">Цена</Table.Th>
-                      <Table.Th className="num">Сумма</Table.Th>
-                      <Table.Th>Категория</Table.Th>
+                      <Table.Th>{t('receipt.col_product')}</Table.Th>
+                      <Table.Th className="num">{t('receipt.col_qty')}</Table.Th>
+                      <Table.Th className="num">{t('receipt.col_price')}</Table.Th>
+                      <Table.Th className="num">{t('receipt.col_total')}</Table.Th>
+                      <Table.Th>{t('receipt.col_category')}</Table.Th>
                       <Table.Th />
                     </Table.Tr>
                   </Table.Thead>
@@ -462,7 +466,7 @@ export default function ReceiptDetailPage() {
                     <Table.Tr>
                       <Table.Td colSpan={3}>
                         <Button size="xs" variant="subtle" leftSection={<IconPlus size={14} />} onClick={() => addItem.mutate()} loading={addItem.isPending}>
-                          Добавить позицию
+                          {t('receipt.add_item')}
                         </Button>
                       </Table.Td>
                       <Table.Td className="num" fw={600}>
@@ -471,8 +475,7 @@ export default function ReceiptDetailPage() {
                       <Table.Td colSpan={2}>
                         {diff !== 0 && (
                           <Text size="xs" c="yellow.7">
-                            расхождение с итогом {diff > 0 ? '+' : ''}
-                            {diff.toFixed(2)}
+                            {t('receipt.mismatch', { diff: `${diff > 0 ? '+' : ''}${diff.toFixed(2)}` })}
                           </Text>
                         )}
                       </Table.Td>
@@ -490,14 +493,14 @@ export default function ReceiptDetailPage() {
         </Grid.Col>
       </Grid>
 
-      <Modal opened={confirmDelete} onClose={confirmCtl.close} title="Удалить запись?">
-        <Text size="sm">Чек, все позиции и фото будут удалены без возможности восстановления.</Text>
+      <Modal opened={confirmDelete} onClose={confirmCtl.close} title={t('receipt.delete_title')}>
+        <Text size="sm">{t('receipt.delete_text')}</Text>
         <Group justify="flex-end" mt="md">
           <Button variant="default" onClick={confirmCtl.close}>
-            Отмена
+            {t('common.cancel')}
           </Button>
           <Button color="red" onClick={() => del.mutate()} loading={del.isPending}>
-            Удалить
+            {t('common.delete')}
           </Button>
         </Group>
       </Modal>

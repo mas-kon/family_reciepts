@@ -1,30 +1,32 @@
 import { Card, Code, Stack, Table, Text, Title } from '@mantine/core'
+import { useTranslation } from 'react-i18next'
 import { LLMPanel } from '../../components/LLMPanel'
 import { useMeta } from '../../hooks'
 
 export default function LLMTab() {
+  const { t } = useTranslation()
   const meta = useMeta()
   return (
     <Stack>
       <LLMPanel />
       <Card withBorder>
         <Title order={5} mb="xs">
-          Нейросеть
+          {t('llm.title')}
         </Title>
         <Text size="sm" mb={4}>
-          Провайдер: <Code>{meta.data?.llm_base_url}</Code>
+          {t('llm.provider')}<Code>{meta.data?.llm_base_url}</Code>
         </Text>
         <Text size="sm" mb="xs">
-          В каждом списке модели идут по порядку: следующая используется, если предыдущая не ответила.
+          {t('llm.order')}
         </Text>
         <Table fz="sm" withRowBorders={false}>
           <Table.Tbody>
             {[
-              ['Чеки по фото', 'LLM_MODELS', meta.data?.models],
-              ['Перечитать чек, если суммы не сошлись', 'LLM_STRONG_MODELS', meta.data?.strong_models],
-              ['Текст: траты, банк, отчёт, товары', 'LLM_TEXT_MODELS', meta.data?.text_models],
-              ['Голосовые сообщения', 'LLM_AUDIO_MODELS', meta.data?.audio_models],
-              ['Вопросы', 'LLM_ASK_MODELS', meta.data?.ask_models],
+              [t('llm.task_photo'), 'LLM_MODELS', meta.data?.models],
+              [t('llm.task_strong'), 'LLM_STRONG_MODELS', meta.data?.strong_models],
+              [t('llm.task_text'), 'LLM_TEXT_MODELS', meta.data?.text_models],
+              [t('llm.task_audio'), 'LLM_AUDIO_MODELS', meta.data?.audio_models],
+              [t('llm.task_ask'), 'LLM_ASK_MODELS', meta.data?.ask_models],
             ].map(([label, env, list]) => (
               <Table.Tr key={env as string}>
                 <Table.Td valign="top" w={260}>
@@ -39,7 +41,7 @@ export default function LLMTab() {
                       ))}
                     </Stack>
                   ) : (
-                    <Text size="sm" c="dimmed">выключено</Text>
+                    <Text size="sm" c="dimmed">{t('llm.off')}</Text>
                   )}
                 </Table.Td>
               </Table.Tr>
@@ -47,7 +49,7 @@ export default function LLMTab() {
           </Table.Tbody>
         </Table>
         <Text size="xs" c="dimmed" mt="sm">
-          Меняется в файле .env, затем перезапуск сервиса.
+          {t('llm.env_hint')}
         </Text>
       </Card>
     </Stack>

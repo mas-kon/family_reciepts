@@ -40,11 +40,23 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
 
+class AppSetting(Base):
+    """Family-wide setting (key -> value), e.g. the interface language."""
+
+    __tablename__ = "app_settings"
+
+    key: Mapped[str] = mapped_column(String(50), primary_key=True)
+    value: Mapped[str] = mapped_column(String(200))
+
+
 class Category(Base):
     __tablename__ = "categories"
-    __table_args__ = (UniqueConstraint("parent_id", "name"),)
+    __table_args__ = (UniqueConstraint("parent_id", "name"), UniqueConstraint("key", name="uq_categories_key"))
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    # stable key of a system category ("groceries.dairy_eggs"): code finds it by key, not by name,
+    # and its name follows the family's language. Categories the family added have no key.
+    key: Mapped[str | None] = mapped_column(String(50))
     name: Mapped[str] = mapped_column(String(100))
     parent_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id", ondelete="RESTRICT"))
     sort_order: Mapped[int] = mapped_column(Integer, default=0)

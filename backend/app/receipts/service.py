@@ -2,7 +2,7 @@
 
 from app.receipts.base import ProcessResult, single_item
 from app.receipts.images import pdf_text_and_preview, prepare_photo
-from app.receipts.parsing import add_months, income_category_name, parse_manual_text, split_who
+from app.receipts.parsing import add_months, income_category_key, parse_manual_text, split_who
 from app.receipts.recognition import (
     DUPLICATE_MINUTES,
     DUPLICATE_NEAR_MINUTES,
@@ -18,7 +18,7 @@ __all__ = [
     "ProcessResult",
     "ReceiptService",
     "add_months",
-    "income_category_name",
+    "income_category_key",
     "parse_manual_text",
     "pdf_text_and_preview",
     "prepare_photo",

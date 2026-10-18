@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.ui import format_receipt, receipt_keyboard
 from app.db.models import Receipt, User
+from app.i18n import t
 from app.receipts.service import ReceiptService
 from app.stats import new_budget_alerts
 
@@ -63,7 +64,7 @@ async def get_sender(svc: ReceiptService, message: Message) -> User | None:
 
 
 def unknown_member(who: str) -> str:
-    return f"Не знаю, кто такой «{html.escape(who)}». Добавьте члена семьи в вебе: Настройки → Семья."
+    return t("bot.unknown_member", who=html.escape(who))
 
 
 async def reply_with_record(

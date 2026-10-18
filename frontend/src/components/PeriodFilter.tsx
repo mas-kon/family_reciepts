@@ -1,5 +1,6 @@
 import { Group, Select, SegmentedControl, TextInput } from '@mantine/core'
 import dayjs from 'dayjs'
+import { useTranslation } from 'react-i18next'
 import type { PeriodKey } from '../format'
 import { useUsers } from '../hooks'
 
@@ -10,6 +11,7 @@ export interface PeriodState {
 }
 
 export function PeriodFilter({ value, onChange }: { value: PeriodState; onChange: (v: PeriodState) => void }) {
+  const { t } = useTranslation()
   const users = useUsers()
   return (
     <Group gap="sm" wrap="wrap" align="flex-end">
@@ -25,32 +27,32 @@ export function PeriodFilter({ value, onChange }: { value: PeriodState; onChange
           onChange({ ...value, period, custom })
         }}
         data={[
-          { value: 'month', label: 'Этот месяц' },
-          { value: 'prev', label: 'Прошлый' },
-          { value: '3m', label: '3 мес.' },
-          { value: 'year', label: 'Год' },
-          { value: 'all', label: 'Всё' },
-          { value: 'custom', label: 'Период' },
+          { value: 'month', label: t('period.month') },
+          { value: 'prev', label: t('period.prev') },
+          { value: '3m', label: t('period.3m') },
+          { value: 'year', label: t('period.year') },
+          { value: 'all', label: t('period.all') },
+          { value: 'custom', label: t('period.custom') },
         ]}
       />
       {value.period === 'custom' && (
         <>
           <TextInput
             type="date"
-            aria-label="С"
+            aria-label={t('period.from')}
             value={value.custom[0]}
             onChange={(e) => onChange({ ...value, custom: [e.currentTarget.value, value.custom[1]] })}
           />
           <TextInput
             type="date"
-            aria-label="По"
+            aria-label={t('period.to')}
             value={value.custom[1]}
             onChange={(e) => onChange({ ...value, custom: [value.custom[0], e.currentTarget.value] })}
           />
         </>
       )}
       <Select
-        placeholder="Все"
+        placeholder={t('period.everyone')}
         clearable
         w={180}
         value={value.userId}

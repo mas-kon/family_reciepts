@@ -19,19 +19,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.clock import now_local
 from app.config import get_settings
 from app.db.models import LLMCall
+from app.i18n import t
 
 log = logging.getLogger(__name__)
 
 TASK_LABEL = {
-    "receipt": "Чеки по фото",
-    "receipt_text": "Электронные чеки",
-    "manual": "Траты текстом",
-    "bank": "Банк и выписки",
-    "voice": "Голосовые",
-    "products": "Склейка товаров",
-    "comment": "Комментарий к отчёту",
-    "ask": "Вопросы",
-    "other": "Прочее",
+    "receipt": "task.receipt",
+    "receipt_text": "task.receipt_text",
+    "manual": "task.manual",
+    "bank": "task.bank",
+    "voice": "task.voice",
+    "products": "task.products",
+    "comment": "task.comment",
+    "ask": "task.ask",
+    "other": "task.other",
 }
 
 
@@ -94,7 +95,7 @@ async def usage_report(session: AsyncSession, days: int = 30) -> dict:
     total = (await session.execute(select(*cols).where(LLMCall.created_at >= since))).one()._mapping
     by_task = await group(LLMCall.task)
     for r in by_task:
-        r["label"] = TASK_LABEL.get(r["task"], r["task"])
+        r["label"] = t(TASK_LABEL[r["task"]]) if r["task"] in TASK_LABEL else r["task"]
     return {
         "days": days,
         "total": dict(total),
@@ -124,7 +125,7 @@ def _openrouter(base_url: str, key: str) -> dict:
         out["balance"] = round(c["total_credits"] - c["total_usage"], 4)
         out["total_credits"] = c["total_credits"]
     except Exception as e:  # a key without access to credits still has its own limit below
-        out["error"] = f"Баланс счёта недоступен: {e}"
+        out["error"] = t("balance.account_unavailable", error=e)
     try:
         k = _get_json(f"{base}/key", key)["data"]
         out["key"] = {
@@ -138,7 +139,7 @@ def _openrouter(base_url: str, key: str) -> dict:
             "free_requests_remaining": (k.get("free_model_daily_requests") or {}).get("remaining"),
         }
     except Exception as e:
-        out.setdefault("error", f"Данные ключа недоступны: {e}")
+        out.setdefault("error", t("balance.key_unavailable", error=e))
     return out
 
 
@@ -150,7 +151,7 @@ def _deepseek(key: str) -> dict:
         out["currency"] = info.get("currency", "USD")
         out["balance"] = float(info.get("total_balance") or 0)
     except Exception as e:
-        out["error"] = f"Баланс недоступен: {e}"
+        out["error"] = t("balance.unavailable", error=e)
     return out
 
 
@@ -180,10 +181,10 @@ def low_balances(items: list[dict], threshold: float) -> dict[str, str]:
     for b in items:
         cur = "$" if b.get("currency", "USD") == "USD" else f" {b.get('currency')}"
         if b.get("balance") is not None and b["balance"] < threshold:
-            out[f"{b['provider']}:balance"] = f"{b['provider']}: на счёте осталось {b['balance']:.2f}{cur}"
+            out[f"{b['provider']}:balance"] = t("balance.low_account", provider=b["provider"], sum=f"{b['balance']:.2f}{cur}")
         key = b.get("key") or {}
         if key.get("limit") and key.get("limit_remaining") is not None and key["limit_remaining"] < threshold:
-            out[f"{b['provider']}:key"] = f"{b['provider']}: до лимита ключа осталось {key['limit_remaining']:.2f}{cur}"
+            out[f"{b['provider']}:key"] = t("balance.low_key", provider=b["provider"], sum=f"{key['limit_remaining']:.2f}{cur}")
     return out
 
 
@@ -207,8 +208,9 @@ async def check_balance(bot) -> list[str]:
     if new:
         await bot.send_message(
             s.notify_chat_id,
-            "💳 Пора пополнить баланс нейросети:\n"
+            t("balance.top_up")
             + "\n".join(f"• {m}" for m in new)
-            + "\nПодробности в вебе: Настройки → Нейросеть.",
+            + "\n"
+            + t("balance.details"),
         )
     return new

@@ -4,7 +4,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from sqlalchemy import text
 
-from app.api import ai, auth, budgets, categories, llm, mail, receipts, recurring, stats, users
+from app.api import ai, auth, budgets, categories, llm, mail, receipts, recurring, settings, stats, users
 from app.config import PROJECT_ROOT
 from app.db.session import session_factory
 
@@ -27,6 +27,7 @@ def create_app() -> FastAPI:
         recurring.router,
         llm.router,
         mail.router,
+        settings.router,
     ):
         app.include_router(r)
 

@@ -21,16 +21,16 @@ def parse_manual_text(text: str) -> tuple[str | None, float] | None:
 
 
 _INCOME_RULES = [
-    (re.compile(r"зарплат|заплата|аванс|salary|payroll|wage", re.IGNORECASE), "Зарплата"),
-    (re.compile(r"возврат|refund|return|възстановен|върнат", re.IGNORECASE), "Возвраты"),
-    (re.compile(r"кэшбэк|кешбэк|кешбек|cashback|cash back|процент|лихв|interest", re.IGNORECASE), "Проценты и кэшбэк"),
-    (re.compile(r"подработ|фриланс|freelance|гонорар|хонорар", re.IGNORECASE), "Подработка"),
-    (re.compile(r"подар|помощ|gift", re.IGNORECASE), "Подарки и помощь"),
+    (re.compile(r"зарплат|заплата|аванс|salary|payroll|wage", re.IGNORECASE), "income.salary"),
+    (re.compile(r"возврат|refund|return|възстановен|върнат", re.IGNORECASE), "income.refunds"),
+    (re.compile(r"кэшбэк|кешбэк|кешбек|cashback|cash back|процент|лихв|interest", re.IGNORECASE), "income.interest_cashback"),
+    (re.compile(r"подработ|фриланс|freelance|гонорар|хонорар", re.IGNORECASE), "income.side_job"),
+    (re.compile(r"подар|помощ|gift", re.IGNORECASE), "income.gifts_help"),
 ]
 
 
-def income_category_name(name: str) -> str:
-    """Income category by keywords; there are few incomes, an LLM call is not worth it."""
+def income_category_key(name: str) -> str:
+    """Key of the income category by keywords; there are few incomes, an LLM call is not worth it."""
     for rx, cat in _INCOME_RULES:
         if rx.search(name or ""):
             return cat

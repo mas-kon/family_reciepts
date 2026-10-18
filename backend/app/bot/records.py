@@ -12,6 +12,7 @@ from app.bot.common import callback_arg, callback_message, get_sender, reply_wit
 from app.bot.ui import format_receipt, receipt_keyboard
 from app.db.models import Receipt
 from app.db.session import session_factory
+from app.i18n import t
 from app.receipts.service import ReceiptService, parse_manual_text, split_who
 from app.stats import new_budget_alerts
 
@@ -22,9 +23,9 @@ router = Router()
 async def _book_text(message: Message, bot: Bot, text: str, *, income: bool):
     """`/add`, `+ ...` (an expense) and `/income` (an income): "[Name:] description amount"."""
     text = text.strip()
-    usage = "<code>/income зарплата 1500</code>" if income else "<code>/add такси 12</code> или <code>+ 12</code>"
+    usage = t("bot.usage_income") if income else t("bot.usage_add")
     if not text and not income:
-        await message.reply(f"Формат: {usage}")
+        await message.reply(t("bot.format", usage=usage))
         return
     async with session_factory()() as session:
         svc = ReceiptService(session)
@@ -40,7 +41,7 @@ async def _book_text(message: Message, bot: Bot, text: str, *, income: bool):
         add = svc.add_income_text if income else svc.add_manual_text
         r = await add(text, owner, message.chat.id, message.message_id)
         if r is None:
-            await message.reply(("Формат: " if income else "Не понял сумму. Формат: ") + usage)
+            await message.reply(t("bot.format" if income else "bot.bad_amount", usage=usage))
             return
         await reply_with_record(message, bot, session, r, sender)
 
@@ -94,7 +95,7 @@ async def on_reply_edit(message: Message, bot: Bot):
             items = await r.awaitable_attrs.items
             if quick and quick[0] is None:
                 if len(items) != 1:
-                    await message.reply("Сумму можно поменять только у записи из одной строки. Чек правится в вебе.")
+                    await message.reply(t("bot.amount_single_only"))
                     return
                 items[0].total = items[0].unit_price = quick[1]
                 r.total = quick[1]
@@ -128,8 +129,8 @@ async def on_duplicate_delete(cb: CallbackQuery):
         r = await session.get(Receipt, int(callback_arg(cb)))
         if r:
             await ReceiptService(session).delete_receipt(r)
-    await msg.edit_text("🗑 Дубль удалён.")
-    await cb.answer("Удалено")
+    await msg.edit_text(t("bot.dup_deleted"))
+    await cb.answer(t("bot.cb_deleted"))
 
 
 @router.callback_query(F.data.startswith("dupkeep:"))
@@ -138,7 +139,7 @@ async def on_duplicate_keep(cb: CallbackQuery, bot: Bot):
         return await cb.answer()
     rid = int(callback_arg(cb))
     await msg.edit_reply_markup(reply_markup=receipt_keyboard(rid))
-    await cb.answer("Оставил")
+    await cb.answer(t("bot.cb_kept"))
     async with session_factory()() as session:
         r = await session.get(Receipt, rid)
         if r:
@@ -153,8 +154,8 @@ async def on_delete_ask(cb: CallbackQuery):
     kb = InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(text="Да, удалить", callback_data=f"delok:{rid}"),
-                InlineKeyboardButton(text="Отмена", callback_data=f"keep:{rid}"),
+                InlineKeyboardButton(text=t("bot.yes_delete"), callback_data=f"delok:{rid}"),
+                InlineKeyboardButton(text=t("bot.cancel"), callback_data=f"keep:{rid}"),
             ]
         ]
     )
@@ -167,7 +168,7 @@ async def on_delete_cancel(cb: CallbackQuery):
     if (msg := callback_message(cb)) is None:
         return await cb.answer()
     await msg.edit_reply_markup(reply_markup=receipt_keyboard(int(callback_arg(cb))))
-    await cb.answer("Оставил")
+    await cb.answer(t("bot.cb_kept"))
 
 
 @router.callback_query(F.data.startswith("delok:"))
@@ -179,7 +180,7 @@ async def on_delete(cb: CallbackQuery):
         r = await session.get(Receipt, rid)
         if r:
             await ReceiptService(session).delete_receipt(r)
-    await msg.edit_text("🗑 Запись удалена.")
-    await cb.answer("Удалено")
+    await msg.edit_text(t("bot.record_deleted"))
+    await cb.answer(t("bot.cb_deleted"))
 
 

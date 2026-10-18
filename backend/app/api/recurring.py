@@ -9,6 +9,7 @@ from app.api.deps import current_viewer
 from app.api.schemas import Ok
 from app.db.models import Category, Recurring, User
 from app.db.session import get_session
+from app.i18n import t
 from app.scheduler import book_recurring
 
 router = APIRouter(prefix="/api", tags=["recurring"], dependencies=[Depends(current_viewer)])
@@ -47,9 +48,9 @@ def rec_out(r: Recurring) -> RecurringOut:
 
 async def _check_recurring_refs(session: AsyncSession, data: RecurringIn) -> None:
     if data.category_id is not None and not await session.get(Category, data.category_id):
-        raise HTTPException(400, "Категория: такой нет")
+        raise HTTPException(400, t("api.no_such_category"))
     if data.user_id is not None and not await session.get(User, data.user_id):
-        raise HTTPException(400, "Член семьи: такого нет")
+        raise HTTPException(400, t("api.no_such_member"))
 
 
 @router.get("/recurring", response_model=list[RecurringOut])
@@ -71,7 +72,7 @@ async def create_recurring(data: RecurringIn, session: AsyncSession = Depends(ge
 async def update_recurring(rid: int, data: RecurringIn, session: AsyncSession = Depends(get_session)):
     r = await session.get(Recurring, rid)
     if not r:
-        raise HTTPException(404, "Платёж не найден")
+        raise HTTPException(404, t("api.payment_not_found"))
     await _check_recurring_refs(session, data)
     for k, v in data.model_dump().items():
         setattr(r, k, v)

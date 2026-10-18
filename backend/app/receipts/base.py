@@ -14,7 +14,7 @@ from app.db.models import Category, CategoryOverride, Item, Receipt, User
 from app.family import find_user
 from app.llm.client import LLMClient, get_llm
 from app.receipts.money import round2
-from app.receipts.parsing import income_category_name
+from app.receipts.parsing import income_category_key
 from app.receipts.text import CategoryMatcher, normalize_name
 
 
@@ -70,10 +70,7 @@ class ServiceBase:
         return CategoryMatcher(cats)
 
     async def income_category(self, name: str) -> int | None:
-        target = income_category_name(name)
-        return await self.session.scalar(
-            select(Category.id).where(Category.kind == Kind.INCOME, Category.name == target)
-        )
+        return await self.session.scalar(select(Category.id).where(Category.key == income_category_key(name)))
 
     async def override_category(self, name: str) -> int | None:
         """The category a person once chose for this product name, if any."""

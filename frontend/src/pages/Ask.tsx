@@ -2,6 +2,7 @@ import { ActionIcon, Badge, Card, Group, Loader, Stack, Text, Textarea, Title } 
 import { IconSend, IconTrash } from '@tabler/icons-react'
 import { useMutation } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { api, type AskResult } from '../api'
 import { notifyError } from '../hooks'
 
@@ -10,12 +11,7 @@ interface Msg {
   content: string
 }
 
-const EXAMPLES = [
-  'Сколько ушло на кафе за лето?',
-  'Где дешевле молоко?',
-  'На что Маша потратила больше всего в этом месяце?',
-  'Сравни расходы на продукты за последние три месяца',
-]
+const EXAMPLES = ['ask.example1', 'ask.example2', 'ask.example3', 'ask.example4']
 
 const STORAGE_KEY = 'ask-history'
 
@@ -28,6 +24,7 @@ function loadHistory(): Msg[] {
 }
 
 export default function Ask() {
+  const { t } = useTranslation()
   const [messages, setMessages] = useState<Msg[]>(loadHistory)
   const [input, setInput] = useState('')
   const bottom = useRef<HTMLDivElement>(null)
@@ -62,23 +59,22 @@ export default function Ask() {
   return (
     <Stack maw={800}>
       <Group justify="space-between">
-        <Title order={2}>Вопросы</Title>
+        <Title order={2}>{t('ask.title')}</Title>
         {messages.length > 0 && (
-          <ActionIcon variant="subtle" aria-label="Очистить" onClick={() => setMessages([])}>
+          <ActionIcon variant="subtle" aria-label={t('ask.clear')} onClick={() => setMessages([])}>
             <IconTrash size={18} />
           </ActionIcon>
         )}
       </Group>
       <Text size="sm" c="dimmed">
-        Спросите о расходах обычными словами. Нейросеть смотрит только статистику и покупки, менять данные она не
-        может.
+        {t('ask.hint')}
       </Text>
 
       {messages.length === 0 && (
         <Group gap="xs">
-          {EXAMPLES.map((e) => (
-            <Badge key={e} variant="light" size="lg" style={{ cursor: 'pointer', textTransform: 'none' }} onClick={() => send(e)}>
-              {e}
+          {EXAMPLES.map((key) => (
+            <Badge key={key} variant="light" size="lg" style={{ cursor: 'pointer', textTransform: 'none' }} onClick={() => send(t(key))}>
+              {t(key)}
             </Badge>
           ))}
         </Group>
@@ -103,7 +99,7 @@ export default function Ask() {
           <Group gap="xs">
             <Loader size="xs" />
             <Text size="sm" c="dimmed">
-              Считаю…
+              {t('ask.counting')}
             </Text>
           </Group>
         )}
@@ -113,7 +109,7 @@ export default function Ask() {
       <Group align="flex-end" gap="xs" wrap="nowrap">
         <Textarea
           style={{ flex: 1 }}
-          placeholder="Например: сколько потратили на такси в октябре?"
+          placeholder={t('ask.placeholder')}
           autosize
           minRows={1}
           maxRows={5}
@@ -126,7 +122,7 @@ export default function Ask() {
             }
           }}
         />
-        <ActionIcon size="lg" aria-label="Спросить" onClick={() => send(input)} loading={ask.isPending} disabled={!input.trim()}>
+        <ActionIcon size="lg" aria-label={t('ask.send')} onClick={() => send(input)} loading={ask.isPending} disabled={!input.trim()}>
           <IconSend size={18} />
         </ActionIcon>
       </Group>

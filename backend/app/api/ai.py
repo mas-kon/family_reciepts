@@ -24,6 +24,7 @@ from app.clock import now_local
 from app.constants import Kind
 from app.db.models import Item, Receipt, User
 from app.db.session import get_session
+from app.i18n import t
 from app.llm.client import LLMError, get_llm
 from app.llm.schema import ParsedBankTx
 from app.receipts.service import ReceiptService
@@ -52,7 +53,7 @@ async def ask(data: AskIn, session: AsyncSession = Depends(get_session)):
     try:
         return await answer(session, data.question, data.history)
     except LLMError as e:
-        raise HTTPException(502, f"Нейросеть не ответила: {e}")
+        raise HTTPException(502, t("api.llm_down", error=e))
 
 
 # ---------- bank statements ----------
@@ -90,7 +91,7 @@ def _receipt_brief(r: Receipt | None) -> ReceiptBrief | None:
     if not r:
         return None
     return ReceiptBrief(
-        id=r.id, title=r.store or r.note or "Запись", purchased_at=r.purchased_at, total=r.total, source=r.source
+        id=r.id, title=r.store or r.note or t("api.record"), purchased_at=r.purchased_at, total=r.total, source=r.source
     )
 
 
@@ -98,10 +99,10 @@ def _receipt_brief(r: Receipt | None) -> ReceiptBrief | None:
 async def bank_statement(file: UploadFile = File(...), session: AsyncSession = Depends(get_session)):
     """Reads a statement and shows which expenses are not recorded yet. Nothing is saved."""
     if file.size is not None and file.size > MAX_STATEMENT_BYTES:
-        raise HTTPException(413, "Файл больше 5 МБ")
+        raise HTTPException(413, t("api.file_too_big"))
     data = await file.read(MAX_STATEMENT_BYTES + 1)
     if len(data) > MAX_STATEMENT_BYTES:
-        raise HTTPException(413, "Файл больше 5 МБ")
+        raise HTTPException(413, t("api.file_too_big"))
     try:
         text = await asyncio.to_thread(statement_text, data, file.filename or "")
     except ValueError as e:
@@ -110,7 +111,7 @@ async def bank_statement(file: UploadFile = File(...), session: AsyncSession = D
     try:
         rows = await analyse_statement(svc, text)
     except LLMError as e:
-        raise HTTPException(502, f"Нейросеть не ответила: {e}")
+        raise HTTPException(502, t("api.llm_down", error=e))
     return {
         "transactions": [
             {
@@ -169,20 +170,20 @@ async def bank_import(
     booked = skipped = 0
     import_id = new_import_id()
     remembered = 0
-    for t in data.transactions:
+    for row in data.transactions:
         tx = ParsedBankTx(
-            amount=t.amount, merchant=t.merchant, date=t.date, card=t.card, type=t.type, counterparty=t.counterparty
+            amount=row.amount, merchant=row.merchant, date=row.date, card=row.card, type=row.type, counterparty=row.counterparty
         )
-        ext = t.external_id or tx_external_id(tx)
+        ext = row.external_id or tx_external_id(tx)
         if await session.scalar(select(Receipt.id).where(Receipt.external_id == ext)):
             skipped += 1
             continue
-        owner = await session.get(User, t.owner_id or viewer.user_id) if (t.owner_id or viewer.user_id) else None
-        peer = await session.get(User, t.peer_id) if t.kind == Kind.TRANSFER and t.peer_id else None
-        await book_tx(svc, tx, owner, kind=t.kind, peer=peer, import_id=import_id, external_id=ext)
+        owner = await session.get(User, row.owner_id or viewer.user_id) if (row.owner_id or viewer.user_id) else None
+        peer = await session.get(User, row.peer_id) if row.kind == Kind.TRANSFER and row.peer_id else None
+        await book_tx(svc, tx, owner, kind=row.kind, peer=peer, import_id=import_id, external_id=ext)
         booked += 1
-        if peer and t.counterparty:
-            remembered += await svc.remember_bank_name(peer, t.counterparty)
+        if peer and row.counterparty:
+            remembered += await svc.remember_bank_name(peer, row.counterparty)
             await session.commit()
     return {
         "booked": booked,
@@ -216,7 +217,7 @@ class Deleted(BaseModel):
 async def bank_import_delete(import_id: str, session: AsyncSession = Depends(get_session)):
     deleted = await delete_import(session, import_id)
     if not deleted:
-        raise HTTPException(404, "Такой выписки нет")
+        raise HTTPException(404, t("api.no_statement"))
     return {"deleted": deleted}
 
 

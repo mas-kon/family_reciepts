@@ -10,6 +10,7 @@ from aiogram.types import Message
 from app.bot.common import download, get_sender, llm_slots, react, reply_with_record
 from app.config import get_settings
 from app.db.session import session_factory
+from app.i18n import t
 from app.receipts.service import ReceiptService
 from app.voice import MAX_VOICE_SECONDS, handle_voice, to_wav
 
@@ -34,8 +35,8 @@ async def on_voice(message: Message, bot: Bot):
             sender = await get_sender(svc, message)
             res = await handle_voice(svc, wav, sender, chat_id=message.chat.id, message_id=message.message_id)
             if res.receipt is None:
-                if res.problem and res.problem.startswith("Не знаю"):
-                    await message.reply(f"{html.escape(res.problem)}. Услышал: «{html.escape(res.transcript)}»")
+                if res.unknown_who:
+                    await message.reply(t("bot.voice_unknown", problem=html.escape(res.problem or ""), heard=html.escape(res.transcript)))
                 else:
                     # most likely an ordinary voice message without an expense: stay quiet
                     await react(message, "🤔")

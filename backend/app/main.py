@@ -16,6 +16,7 @@ from app.config import get_settings
 from app.db.migrate import upgrade
 from app.db.seed import fail_interrupted, seed_categories
 from app.db.session import session_factory
+from app.i18n import load_language
 from app.scheduler import create_scheduler
 from app.web import create_app
 
@@ -27,6 +28,7 @@ async def run() -> None:
     s.receipts_dir.mkdir(parents=True, exist_ok=True)
 
     async with session_factory()() as session:
+        await load_language(session)
         await seed_categories(session)
         if n := await fail_interrupted(session):
             log.warning("%d records were interrupted by a restart: marked failed", n)

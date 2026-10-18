@@ -2,6 +2,7 @@ import { Button, Group, Modal, NumberInput, SegmentedControl, Select, Stack, Tex
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import dayjs from 'dayjs'
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { api, type ReceiptDetail } from '../api'
 import { categoryOptions } from '../format'
 import { notifyError, notifyOk, useCategories, useUsers, invalidateRecords } from '../hooks'
@@ -13,6 +14,7 @@ export function ManualExpenseModal({
   opened: boolean
   onClose: () => void
 }) {
+  const { t } = useTranslation()
   const qc = useQueryClient()
   const cats = useCategories()
   const users = useUsers()
@@ -38,7 +40,7 @@ export function ManualExpenseModal({
         },
       }),
     onSuccess: () => {
-      notifyOk(income ? 'Доход записан' : 'Трата записана')
+      notifyOk(income ? t('manual.income_saved') : t('manual.expense_saved'))
       invalidateRecords(qc)
       setName('')
       setAmount('')
@@ -48,7 +50,7 @@ export function ManualExpenseModal({
   })
 
   return (
-    <Modal opened={opened} onClose={onClose} title={income ? 'Доход' : 'Трата без чека'}>
+    <Modal opened={opened} onClose={onClose} title={income ? t('manual.title_income') : t('manual.title_expense')}>
       <Stack>
         <SegmentedControl
           value={kind}
@@ -57,25 +59,25 @@ export function ManualExpenseModal({
             setCategoryId(null)
           }}
           data={[
-            { value: 'expense', label: 'Расход' },
-            { value: 'income', label: 'Доход' },
+            { value: 'expense', label: t('kind.expense') },
+            { value: 'income', label: t('kind.income') },
           ]}
         />
-        <NumberInput label="Сумма, €" value={amount} onChange={setAmount} decimalScale={2} min={0} decimalSeparator="," data-autofocus />
+        <NumberInput label={t('manual.amount')} value={amount} onChange={setAmount} decimalScale={2} min={0} decimalSeparator="," data-autofocus />
         <TextInput
-          label="Описание"
+          label={t('manual.description')}
           description={
             income
-              ? 'Например: зарплата, подработка, возврат'
-              : 'Можно оставить пустым, например если видна только сумма в банке'
+              ? t('manual.desc_income')
+              : t('manual.desc_expense')
           }
-          placeholder={income ? 'Поступление' : 'Без описания'}
+          placeholder={income ? t('manual.placeholder_income') : t('manual.placeholder_expense')}
           value={name}
           onChange={(e) => setName(e.currentTarget.value)}
         />
         <Select
-          label="Категория"
-          placeholder={income ? 'По описанию' : 'Без категории'}
+          label={t('manual.category')}
+          placeholder={income ? t('manual.category_income') : t('category.none')}
           clearable
           searchable
           value={categoryId}
@@ -83,20 +85,20 @@ export function ManualExpenseModal({
           data={categoryOptions(cats.data ?? [], true, kind)}
         />
         <Select
-          label={income ? 'Кто получил' : 'Кто потратил'}
-          placeholder="Я"
+          label={income ? t('manual.who_income') : t('manual.who_expense')}
+          placeholder={t('manual.me')}
           clearable
           value={userId}
           onChange={setUserId}
           data={(users.data ?? []).map((u) => ({ value: String(u.id), label: u.name }))}
         />
-        <TextInput label="Когда" type="datetime-local" value={date} onChange={(e) => setDate(e.currentTarget.value)} />
+        <TextInput label={t('manual.when')} type="datetime-local" value={date} onChange={(e) => setDate(e.currentTarget.value)} />
         <Group justify="flex-end">
           <Button variant="default" onClick={onClose}>
-            Отмена
+            {t('common.cancel')}
           </Button>
           <Button onClick={() => save.mutate()} loading={save.isPending} disabled={!amount}>
-            Записать
+            {t('manual.record')}
           </Button>
         </Group>
       </Stack>

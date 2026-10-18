@@ -2,6 +2,7 @@ import { Alert, Anchor, Badge, Button, Checkbox, FileButton, Group, Select, Stac
 import { IconUpload } from '@tabler/icons-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
+import { Trans, useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 import { api, type BankImportInfo, type StatementTx } from '../api'
 import { DeleteImportButton } from '../components/DeleteImportButton'
@@ -16,13 +17,14 @@ interface Row extends StatementTx {
 
 const OUTGOING = new Set(['purchase', 'transfer_out'])
 
-function initialChoice(t: StatementTx): string {
-  if (t.kind === 'transfer') return t.peer_id ? `transfer:${t.peer_id}` : 'expense'
-  if (t.kind) return t.kind
-  return OUTGOING.has(t.type ?? '') ? 'expense' : 'income'
+function initialChoice(tx: StatementTx): string {
+  if (tx.kind === 'transfer') return tx.peer_id ? `transfer:${tx.peer_id}` : 'expense'
+  if (tx.kind) return tx.kind
+  return OUTGOING.has(tx.type ?? '') ? 'expense' : 'income'
 }
 
 export default function BankImport() {
+  const { t } = useTranslation()
   const qc = useQueryClient()
   const users = useUsers()
   const [rows, setRows] = useState<Row[] | null>(null)
@@ -38,7 +40,7 @@ export default function BankImport() {
     // by default everything not recorded yet is selected, except moves between own accounts
     onSuccess: (r) =>
       setRows(
-        r.transactions.map((t) => ({ ...t, choice: initialChoice(t), selected: !t.match && !t.imported && t.kind !== null })),
+        r.transactions.map((tx) => ({ ...tx, choice: initialChoice(tx), selected: !tx.match && !tx.imported && tx.kind !== null })),
       ),
     onError: notifyError,
   })
@@ -59,8 +61,9 @@ export default function BankImport() {
       }),
     onSuccess: (r) => {
       notifyOk(
-        `Записано: ${r.booked}${r.skipped ? `, уже были: ${r.skipped}` : ''}` +
-          (r.marked_transfers ? `. Прошлых переводов внутри семьи найдено: ${r.marked_transfers}` : ''),
+        t('bank.booked', { booked: r.booked }) +
+          (r.skipped ? t('bank.skipped', { skipped: r.skipped }) : '') +
+          (r.marked_transfers ? t('bank.marked', { count: r.marked_transfers }) : ''),
       )
       invalidateRecords(qc)
       setRows((rs) => rs?.map((x) => (x.selected ? { ...x, selected: false, imported: true } : x)) ?? null)
@@ -74,54 +77,50 @@ export default function BankImport() {
   const selected = rows?.filter((r) => r.selected) ?? []
   const missing = rows?.filter((r) => !r.match && !r.imported && r.kind !== null).length ?? 0
   const typeOptions = [
-    { value: 'expense', label: 'Расход' },
-    { value: 'income', label: 'Доход' },
-    ...(users.data ?? []).map((u) => ({ value: `transfer:${u.id}`, label: `Семья: ${u.name}` })),
+    { value: 'expense', label: t('kind.expense') },
+    { value: 'income', label: t('kind.income') },
+    ...(users.data ?? []).map((u) => ({ value: `transfer:${u.id}`, label: t('bank.family_option', { name: u.name }) })),
   ]
 
   return (
     <Stack>
-      <Title order={2}>Выписка из банка</Title>
+      <Title order={2}>{t('bank.title')}</Title>
       <Text size="sm" c="dimmed">
-        Загрузите выписку в CSV или PDF. Нейросеть найдёт в ней расходы и доходы и сравнит с уже записанными: такая же
-        сумма в пределах двух дней из другого источника считается той же операцией. Ничего не сохраняется, пока вы не нажмёте «Записать».
-        Владелец определяется по последним цифрам карты, их можно указать в Настройках → Семья.
+        {t('bank.hint1')}
       </Text>
       <Text size="sm" c="dimmed">
-        Перевод члену семьи отметьте как «Семья: имя». Он не войдёт ни в расходы, ни в доходы, а имя из банка
-        запомнится: следующие переводы этому человеку определятся сами. Переводы между своими счетами и пополнения со
-        своей карты по умолчанию не отмечены.
+        {t('bank.hint2')}
       </Text>
 
       <Group>
         <FileButton onChange={(f) => f && (setFileName(f.name), analyse.mutate(f))} accept=".csv,.txt,.pdf,text/csv,application/pdf">
           {(props) => (
             <Button {...props} leftSection={<IconUpload size={16} />} loading={analyse.isPending}>
-              Загрузить выписку
+              {t('bank.upload')}
             </Button>
           )}
         </FileButton>
         {fileName && <Text size="sm" c="dimmed">{fileName}</Text>}
       </Group>
-      {analyse.isPending && <Text size="sm" c="dimmed">Нейросеть читает выписку, это может занять до минуты…</Text>}
+      {analyse.isPending && <Text size="sm" c="dimmed">{t('bank.reading')}</Text>}
 
-      {rows && rows.length === 0 && <Alert color="gray">Списаний в выписке не найдено.</Alert>}
+      {rows && rows.length === 0 && <Alert color="gray">{t('bank.no_debits')}</Alert>}
       {rows && rows.length > 0 && (
         <>
           <Text size="sm">
-            Операций: {rows.length}, не записано: <b>{missing}</b>.
+            <Trans i18nKey="bank.summary" values={{ count: rows.length, missing }} components={{ b: <b /> }} />
           </Text>
           <Table.ScrollContainer minWidth={920}>
             <Table verticalSpacing="xs" fz="sm">
               <Table.Thead>
                 <Table.Tr>
                   <Table.Th w={36} />
-                  <Table.Th>Дата</Table.Th>
-                  <Table.Th>Где</Table.Th>
-                  <Table.Th className="num">Сумма</Table.Th>
-                  <Table.Th>Тип</Table.Th>
-                  <Table.Th>Кто</Table.Th>
-                  <Table.Th>Уже записано</Table.Th>
+                  <Table.Th>{t('bank.col_date')}</Table.Th>
+                  <Table.Th>{t('bank.col_where')}</Table.Th>
+                  <Table.Th className="num">{t('bank.col_amount')}</Table.Th>
+                  <Table.Th>{t('bank.col_type')}</Table.Th>
+                  <Table.Th>{t('bank.col_who')}</Table.Th>
+                  <Table.Th>{t('bank.col_recorded')}</Table.Th>
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
@@ -129,7 +128,7 @@ export default function BankImport() {
                   <Table.Tr key={r.external_id + i} opacity={r.imported ? 0.5 : 1}>
                     <Table.Td>
                       <Checkbox
-                        aria-label="Записать"
+                        aria-label={t('bank.record')}
                         checked={r.selected}
                         disabled={r.imported}
                         onChange={(e) => update(i, { selected: e.currentTarget.checked })}
@@ -157,11 +156,11 @@ export default function BankImport() {
                         data={typeOptions}
                         allowDeselect={false}
                         disabled={r.imported}
-                        aria-label="Тип"
+                        aria-label={t('bank.col_type')}
                       />
                       {r.kind === null && (
                         <Text size="xs" c="dimmed">
-                          между своими счетами
+                          {t('bank.own_accounts')}
                         </Text>
                       )}
                     </Table.Td>
@@ -169,7 +168,7 @@ export default function BankImport() {
                       <Select
                         size="xs"
                         w={140}
-                        placeholder="Я"
+                        placeholder={t('bank.me')}
                         clearable
                         value={r.owner_id ? String(r.owner_id) : null}
                         onChange={(v) => update(i, { owner_id: v ? Number(v) : null })}
@@ -180,7 +179,7 @@ export default function BankImport() {
                     <Table.Td>
                       {r.imported ? (
                         <Badge color="gray" variant="light">
-                          Импортировано раньше
+                          {t('bank.imported_before')}
                         </Badge>
                       ) : r.match ? (
                         <Anchor component={Link} to={`/receipts/${r.match.id}`} size="sm">
@@ -188,7 +187,7 @@ export default function BankImport() {
                         </Anchor>
                       ) : (
                         <Badge color="yellow" variant="light">
-                          Нет записи
+                          {t('bank.no_record')}
                         </Badge>
                       )}
                     </Table.Td>
@@ -199,28 +198,28 @@ export default function BankImport() {
           </Table.ScrollContainer>
           <Group>
             <Button onClick={() => importRows.mutate()} disabled={!selected.length} loading={importRows.isPending}>
-              Записать отмеченные ({selected.length})
+              {t('bank.record_selected', { count: selected.length })}
             </Button>
           </Group>
         </>
       )}
 
       <Title order={3} mt="lg">
-        Загруженные выписки
+        {t('bank.uploaded')}
       </Title>
       {!imports.data?.length ? (
         <Text size="sm" c="dimmed">
-          Пока ни одной. Здесь появятся выписки, загруженные в вебе или присланные в бот.
+          {t('bank.none_yet')}
         </Text>
       ) : (
         <Table.ScrollContainer minWidth={640}>
           <Table verticalSpacing="xs" fz="sm">
             <Table.Thead>
               <Table.Tr>
-                <Table.Th>Загружена</Table.Th>
-                <Table.Th>Траты за период</Table.Th>
-                <Table.Th className="num">Записей</Table.Th>
-                <Table.Th className="num">Сумма</Table.Th>
+                <Table.Th>{t('bank.col_uploaded')}</Table.Th>
+                <Table.Th>{t('bank.col_period')}</Table.Th>
+                <Table.Th className="num">{t('bank.col_records')}</Table.Th>
+                <Table.Th className="num">{t('bank.col_total')}</Table.Th>
                 <Table.Th />
               </Table.Tr>
             </Table.Thead>
@@ -231,7 +230,7 @@ export default function BankImport() {
                     {dateTime(i.created_at)}
                     <Text span size="xs" c="dimmed">
                       {' '}
-                      {i.from_bot ? 'бот' : 'веб'}
+                      {i.from_bot ? t('bank.via_bot') : t('bank.via_web')}
                     </Text>
                   </Table.Td>
                   <Table.Td>

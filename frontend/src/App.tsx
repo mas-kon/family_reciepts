@@ -24,9 +24,11 @@ import {
   IconTrendingUp,
 } from '@tabler/icons-react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Link, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { api, ApiError } from './api'
+import { isLanguage, setLanguage } from './i18n'
 import Login from './pages/Login'
 
 // pages load on demand: charts and the settings tabs stay out of the first download
@@ -46,16 +48,17 @@ interface Me {
 }
 
 const NAV = [
-  { to: '/', label: 'Статистика', icon: IconChartBar },
-  { to: '/receipts', label: 'Чеки', icon: IconReceipt },
-  { to: '/products', label: 'Цены', icon: IconTrendingUp },
-  { to: '/ask', label: 'Вопросы', icon: IconMessageQuestion },
-  { to: '/bank', label: 'Выписка', icon: IconBuildingBank },
-  { to: '/warranties', label: 'Гарантии', icon: IconShieldCheck },
-  { to: '/settings', label: 'Настройки', icon: IconSettings },
+  { to: '/', labelKey: 'nav.stats', icon: IconChartBar },
+  { to: '/receipts', labelKey: 'nav.receipts', icon: IconReceipt },
+  { to: '/products', labelKey: 'nav.prices', icon: IconTrendingUp },
+  { to: '/ask', labelKey: 'nav.ask', icon: IconMessageQuestion },
+  { to: '/bank', labelKey: 'nav.bank', icon: IconBuildingBank },
+  { to: '/warranties', labelKey: 'nav.warranties', icon: IconShieldCheck },
+  { to: '/settings', labelKey: 'nav.settings', icon: IconSettings },
 ]
 
 export default function App() {
+  const { t } = useTranslation()
   const [opened, { toggle, close }] = useDisclosure()
   const location = useLocation()
   const qc = useQueryClient()
@@ -65,6 +68,17 @@ export default function App() {
     queryFn: () => api<Me>('/auth/me'),
     retry: false,
   })
+
+  // the family's language lives on the server; the page follows it after sign-in
+  const lang = useQuery({
+    queryKey: ['language'],
+    queryFn: () => api<{ language: string }>('/settings/language'),
+    enabled: !!me.data,
+  })
+  const serverLanguage = lang.data?.language
+  useEffect(() => {
+    if (isLanguage(serverLanguage)) void setLanguage(serverLanguage)
+  }, [serverLanguage])
 
   if (me.isLoading) {
     return (
@@ -93,7 +107,7 @@ export default function App() {
         <Group h="100%" px="md" justify="space-between">
           <Group>
             <Burger opened={opened} onClick={toggle} hiddenFrom="sm" size="sm" />
-            <Title order={4}>Семейные расходы</Title>
+            <Title order={4}>{t('app.title')}</Title>
           </Group>
           <Group gap="xs">
             <Text size="sm" c="dimmed" visibleFrom="xs">
@@ -101,13 +115,13 @@ export default function App() {
             </Text>
             <ActionIcon
               variant="subtle"
-              aria-label="Тема"
+              aria-label={t('app.theme')}
               onClick={() => setColorScheme(colorScheme === 'dark' ? 'light' : 'dark')}
             >
               {colorScheme === 'dark' ? <IconSun size={18} /> : <IconMoon size={18} />}
             </ActionIcon>
             {me.data?.method !== 'disabled' && (
-              <ActionIcon variant="subtle" aria-label="Выйти" onClick={logout}>
+              <ActionIcon variant="subtle" aria-label={t('app.logout')} onClick={logout}>
                 <IconLogout size={18} />
               </ActionIcon>
             )}
@@ -121,7 +135,7 @@ export default function App() {
             key={n.to}
             component={Link}
             to={n.to}
-            label={n.label}
+            label={t(n.labelKey)}
             leftSection={<n.icon size={18} />}
             active={n.to === '/' ? location.pathname === '/' : location.pathname.startsWith(n.to)}
             onClick={close}

@@ -1,5 +1,6 @@
 import { notifications } from '@mantine/notifications'
 import { useQuery, type QueryClient } from '@tanstack/react-query'
+import i18n from './i18n'
 import { api, type Category, type Meta, type User } from './api'
 
 export const useCategories = () =>
@@ -12,7 +13,7 @@ export const useMeta = () =>
   useQuery({ queryKey: ['meta'], queryFn: () => api<Meta>('/meta'), staleTime: 300_000 })
 
 export function notifyError(e: unknown) {
-  notifications.show({ color: 'red', title: 'Ошибка', message: (e as Error).message })
+  notifications.show({ color: 'red', title: i18n.t('common.error'), message: (e as Error).message })
 }
 
 export function notifyOk(message: string) {

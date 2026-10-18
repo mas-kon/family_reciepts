@@ -1,6 +1,7 @@
 import { Alert, Button, Center, Divider, Paper, PasswordInput, Stack, Text, Title } from '@mantine/core'
 import { useQuery } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { api } from '../api'
 
 interface AuthConfig {
@@ -41,6 +42,7 @@ function takeQueryError(): string | null {
 }
 
 export default function Login({ onDone }: { onDone: () => void }) {
+  const { t } = useTranslation()
   const cfg = useQuery({ queryKey: ['auth-config'], queryFn: () => api<AuthConfig>('/auth/config') })
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(takeQueryError)
@@ -86,32 +88,32 @@ export default function Login({ onDone }: { onDone: () => void }) {
     <Center mih="100vh" p="md">
       <Paper withBorder p="xl" w="100%" maw={380}>
         <Stack>
-          <Title order={3}>Семейные расходы</Title>
+          <Title order={3}>{t('app.title')}</Title>
           {cfg.data?.telegram_bot && (
             <>
               <Text size="sm" c="dimmed">
-                Войдите через Telegram. Доступ есть у участников семейной группы.
+                {t('login.telegram')}
               </Text>
               <div ref={widgetRef} />
             </>
           )}
-          {cfg.data?.telegram_bot && cfg.data.password_enabled && <Divider label="или" />}
+          {cfg.data?.telegram_bot && cfg.data.password_enabled && <Divider label={t('login.or')} />}
           {cfg.data?.password_enabled && (
             <form onSubmit={submit}>
               <Stack>
                 <PasswordInput
-                  label="Пароль"
+                  label={t('login.password')}
                   value={password}
                   onChange={(e) => setPassword(e.currentTarget.value)}
                   autoFocus
                 />
-                <Button type="submit">Войти</Button>
+                <Button type="submit">{t('login.submit')}</Button>
               </Stack>
             </form>
           )}
           {nothing && (
             <Alert color="yellow">
-              Вход не настроен. Задайте BOT_TOKEN или WEB_PASSWORD в .env.
+              {t('login.not_configured')}
             </Alert>
           )}
           {error && <Alert color="red">{error}</Alert>}

@@ -11,6 +11,7 @@ from app.bank import handle_bank_text, looks_like_bank_message
 from app.bot.common import get_sender, reply_with_record
 from app.bot.ui import money, receipt_keyboard
 from app.db.session import session_factory
+from app.i18n import t
 from app.llm.client import LLMError
 from app.receipts.service import ReceiptService
 
@@ -27,20 +28,20 @@ async def _bank(message: Message, bot: Bot, text: str, explicit: bool):
         except LLMError as e:
             log.warning("bank message failed: %s", e)
             if explicit:
-                await message.reply("❌ Нейросеть не ответила, попробуйте позже.")
+                await message.reply(t("bot.llm_down_later"))
             return
         if not results:
             if explicit:
-                await message.reply("Не нашёл в тексте операций, которые надо записать.")
+                await message.reply(t("bot.bank_nothing"))
             return
         for r in results:
             if r.match:
                 m = r.match
-                when = f" от {m.purchased_at:%d.%m}" if m.purchased_at else ""
-                what = {"income": "Поступление", "transfer": "Перевод"}.get(r.kind, "Списание")
+                when = t("bot.bank_from", date=f"{m.purchased_at:%d.%m}") if m.purchased_at else ""
+                what = {"income": t("bot.bank_income"), "transfer": t("bot.bank_transfer")}.get(r.kind, t("bot.bank_debit"))
                 where = f" ({html.escape(r.tx.merchant)})" if r.tx.merchant else ""
                 await message.reply(
-                    f"🏦 {what} {money(r.tx.amount)}{where} уже записано{when}.",
+                    t("bot.bank_already", what=what, amount=money(r.tx.amount), where=where, when=when),
                     reply_markup=receipt_keyboard(m.id),
                 )
                 continue
@@ -54,7 +55,7 @@ async def on_bank_command(message: Message, bot: Bot, command: CommandObject):
     if not text and message.reply_to_message:
         text = message.reply_to_message.text or message.reply_to_message.caption or ""
     if not text:
-        await message.reply("Формат: <code>/bank текст уведомления банка</code> или ответьте /bank на уведомление.")
+        await message.reply(t("bot.bank_format"))
         return
     await _bank(message, bot, text, explicit=True)
 

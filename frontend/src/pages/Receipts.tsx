@@ -15,16 +15,28 @@ import {
 import { useDebouncedValue, useDisclosure } from '@mantine/hooks'
 import { IconDownload, IconPhoto, IconPlus, IconSearch } from '@tabler/icons-react'
 import { useQuery } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { api, qs, type Receipt } from '../api'
 import { ManualExpenseModal } from '../components/ManualExpenseModal'
 import { DeleteImportButton } from '../components/DeleteImportButton'
-import { categoryOptions, dateTime, KIND_LABEL, kindMoney, SOURCE_LABEL, sourceLabel, STATUS_LABEL } from '../format'
+import {
+  categoryOptions,
+  dateTime,
+  kindLabel,
+  kindMoney,
+  kindOptions,
+  sourceLabel,
+  sourceOptions,
+  statusLabel,
+  statusOptions,
+} from '../format'
 import { useCategories, useUsers } from '../hooks'
 
 const PAGE = 50
 
 export default function Receipts() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const [sp, setSp] = useSearchParams()
   const [manual, manualCtl] = useDisclosure()
@@ -63,7 +75,7 @@ export default function Receipts() {
   return (
     <Stack>
       <Group justify="space-between">
-        <Title order={2}>Чеки</Title>
+        <Title order={2}>{t('receipts.title')}</Title>
         <Group gap="xs">
           <Button
             variant="default"
@@ -74,23 +86,23 @@ export default function Receipts() {
             CSV
           </Button>
           <Button leftSection={<IconPlus size={16} />} onClick={manualCtl.open}>
-            Трата без чека
+            {t('receipts.manual')}
           </Button>
         </Group>
       </Group>
 
       <Group gap="sm" align="flex-end" wrap="wrap">
         <TextInput
-          placeholder="Магазин или товар"
+          placeholder={t('receipts.search')}
           leftSection={<IconSearch size={16} />}
           value={get('q')}
           onChange={(e) => set('q', e.currentTarget.value)}
           w={220}
         />
-        <TextInput type="date" aria-label="С" value={get('date_from')} onChange={(e) => set('date_from', e.currentTarget.value)} />
-        <TextInput type="date" aria-label="По" value={get('date_to')} onChange={(e) => set('date_to', e.currentTarget.value)} />
+        <TextInput type="date" aria-label={t('receipts.date_from')} value={get('date_from')} onChange={(e) => set('date_from', e.currentTarget.value)} />
+        <TextInput type="date" aria-label={t('receipts.date_to')} value={get('date_to')} onChange={(e) => set('date_to', e.currentTarget.value)} />
         <Select
-          placeholder="Кто"
+          placeholder={t('receipts.who')}
           clearable
           w={150}
           value={get('user_id') || null}
@@ -98,50 +110,50 @@ export default function Receipts() {
           data={(users.data ?? []).map((u) => ({ value: String(u.id), label: u.name }))}
         />
         <Select
-          placeholder="Категория"
+          placeholder={t('receipts.category')}
           clearable
           searchable
           w={200}
           value={get('category_id') || null}
           onChange={(v) => set('category_id', v)}
-          data={[{ group: '', items: [{ value: 'none', label: 'Без категории' }] }, ...categoryOptions(cats.data ?? [])]}
+          data={[{ group: '', items: [{ value: 'none', label: t('category.none') }] }, ...categoryOptions(cats.data ?? [])]}
         />
         <Select
-          placeholder="Статус"
+          placeholder={t('receipts.status')}
           clearable
           w={150}
           value={get('status') || null}
           onChange={(v) => set('status', v)}
-          data={Object.entries(STATUS_LABEL).map(([value, s]) => ({ value, label: s.label }))}
+          data={statusOptions()}
         />
         <Select
-          placeholder="Тип"
+          placeholder={t('receipts.type')}
           clearable
           w={150}
           value={get('kind') || null}
           onChange={(v) => set('kind', v)}
-          data={Object.entries(KIND_LABEL).map(([value, label]) => ({ value, label }))}
+          data={kindOptions()}
         />
         <Select
-          placeholder="Источник"
+          placeholder={t('receipts.source')}
           clearable
           w={140}
           value={get('source') || null}
           onChange={(v) => set('source', v)}
-          data={Object.entries(SOURCE_LABEL).map(([value, label]) => ({ value, label }))}
+          data={sourceOptions()}
         />
       </Group>
 
       {params.import_id && (
-        <Alert color="blue" title="Записи одной выписки">
+        <Alert color="blue" title={t('receipts.import_title')}>
           <Group justify="space-between">
             <Text size="sm">
-              Показаны только траты, добавленные из одной банковской выписки
+              {t('receipts.import_only')}
               {list.data ? `: ${list.data.total}` : ''}.
             </Text>
             <Group gap="xs">
               <Button size="xs" variant="subtle" onClick={() => set('import_id', null)}>
-                Показать все записи
+                {t('receipts.show_all')}
               </Button>
               <DeleteImportButton
                 importId={params.import_id}
@@ -154,7 +166,7 @@ export default function Receipts() {
       )}
 
       {list.isError ? (
-        <Alert color="red" title="Не удалось загрузить список">
+        <Alert color="red" title={t('receipts.load_failed')}>
           {(list.error as Error).message}
         </Alert>
       ) : list.isLoading ? (
@@ -165,12 +177,12 @@ export default function Receipts() {
             <Table highlightOnHover verticalSpacing="xs">
               <Table.Thead>
                 <Table.Tr>
-                  <Table.Th>Дата</Table.Th>
-                  <Table.Th>Магазин / что</Table.Th>
-                  <Table.Th>Кто</Table.Th>
-                  <Table.Th className="num">Позиций</Table.Th>
-                  <Table.Th className="num">Сумма</Table.Th>
-                  <Table.Th>Статус</Table.Th>
+                  <Table.Th>{t('receipts.col_date')}</Table.Th>
+                  <Table.Th>{t('receipts.col_store')}</Table.Th>
+                  <Table.Th>{t('receipts.col_who')}</Table.Th>
+                  <Table.Th className="num">{t('receipts.col_items')}</Table.Th>
+                  <Table.Th className="num">{t('receipts.col_total')}</Table.Th>
+                  <Table.Th>{t('receipts.col_status')}</Table.Th>
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
@@ -188,7 +200,7 @@ export default function Receipts() {
                         )}
                         {r.kind !== 'expense' && (
                           <Badge size="xs" variant="light" color={r.kind === 'income' ? 'teal' : 'grape'}>
-                            {r.kind === 'transfer' && r.peer_name ? `Семья → ${r.peer_name}` : KIND_LABEL[r.kind]}
+                            {r.kind === 'transfer' && r.peer_name ? t('receipts.family_to', { name: r.peer_name }) : kindLabel(r.kind)}
                           </Badge>
                         )}
                       </Group>
@@ -202,8 +214,8 @@ export default function Receipts() {
                       {kindMoney(r.kind, r.total)}
                     </Table.Td>
                     <Table.Td>
-                      <Badge color={STATUS_LABEL[r.status]?.color} variant="light">
-                        {STATUS_LABEL[r.status]?.label ?? r.status}
+                      <Badge color={statusLabel(r.status).color} variant="light">
+                        {statusLabel(r.status).label}
                       </Badge>
                     </Table.Td>
                   </Table.Tr>
@@ -211,7 +223,7 @@ export default function Receipts() {
               </Table.Tbody>
             </Table>
           </Table.ScrollContainer>
-          {list.data && list.data.items.length === 0 && <Text c="dimmed">Ничего не найдено</Text>}
+          {list.data && list.data.items.length === 0 && <Text c="dimmed">{t('receipts.nothing')}</Text>}
           {list.data && list.data.total > PAGE && (
             <Pagination total={Math.ceil(list.data.total / PAGE)} value={page} onChange={(p) => set('page', String(p))} />
           )}

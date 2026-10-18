@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_settings
 from app.constants import Kind
 from app.db.models import Category, Receipt, User
+from app.i18n import t
 
 
 def money(amount: float | None) -> str:
@@ -17,10 +18,10 @@ def money(amount: float | None) -> str:
 
 
 def receipt_keyboard(receipt_id: int) -> InlineKeyboardMarkup:
-    row = [InlineKeyboardButton(text="🗑 Удалить", callback_data=f"del:{receipt_id}")]
+    row = [InlineKeyboardButton(text=t("bot.delete"), callback_data=f"del:{receipt_id}")]
     base = get_settings().web_base_url.rstrip("/")
     if base:
-        row.append(InlineKeyboardButton(text="🔎 Открыть", url=f"{base}/receipts/{receipt_id}"))
+        row.append(InlineKeyboardButton(text=t("bot.open"), url=f"{base}/receipts/{receipt_id}"))
     return InlineKeyboardMarkup(inline_keyboard=[row])
 
 
@@ -34,7 +35,7 @@ async def format_receipt(session: AsyncSession, r: Receipt, sender_id: int | Non
     items = await r.awaitable_attrs.items
     by_cat: dict[str, float] = defaultdict(float)
     for it in items:
-        by_cat[names.get(it.category_id, "Без категории")] += it.total
+        by_cat[names.get(it.category_id, t("cat.uncategorized"))] += it.total
     head = "✅" if r.status == "ok" else "⚠️"
     if r.kind == Kind.INCOME:
         head = "💰"
@@ -46,16 +47,16 @@ async def format_receipt(session: AsyncSession, r: Receipt, sender_id: int | Non
     elif r.source != "photo" and items:
         title = items[0].name_ru or items[0].name_original
     else:
-        title = "Чек"
+        title = t("bot.receipt")
     lines = [f"{head} <b>{html.escape(title)}</b> · {when}".rstrip(" ·")]
     if r.kind == Kind.INCOME:
-        lines.append(f"Доход {money(r.total)}")
+        lines.append(t("bot.income_line", amount=money(r.total)))
     elif r.kind == Kind.TRANSFER:
         peer = await session.get(User, r.peer_user_id) if r.peer_user_id else None
         to = f" ({html.escape(peer.name)})" if peer else ""
-        lines.append(f"Перевод внутри семьи{to}: {money(r.total)}, в расходы не входит")
+        lines.append(t("bot.transfer_line", to=to, amount=money(r.total)))
     else:
-        lines.append(f"{money(r.total)} · позиций: {len(items)}")
+        lines.append(t("bot.items_line", amount=money(r.total), count=len(items)))
     top = sorted(by_cat.items(), key=lambda kv: -kv[1])[:4]
     if top:
         lines.append(", ".join(f"{html.escape(k)} {v:.2f}" for k, v in top))
@@ -66,17 +67,17 @@ async def format_receipt(session: AsyncSession, r: Receipt, sender_id: int | Non
         if owner:
             lines.append(f"👤 {html.escape(owner.name)}")
     if r.status == "needs_review" and r.review_reason:
-        lines.append(f"\n<i>Проверьте в вебе: {html.escape(r.review_reason)}</i>")
+        lines.append("\n<i>" + t("bot.check_in_web", reason=html.escape(r.review_reason)) + "</i>")
     return "\n".join(lines)
 
 
 def duplicate_keyboard(new_id: int, old_id: int) -> InlineKeyboardMarkup:
     rows = [
         [
-            InlineKeyboardButton(text="🗑 Да, дубль — удалить", callback_data=f"dupdel:{new_id}"),
-            InlineKeyboardButton(text="Нет, это другой чек", callback_data=f"dupkeep:{new_id}"),
+            InlineKeyboardButton(text=t("bot.dup_delete"), callback_data=f"dupdel:{new_id}"),
+            InlineKeyboardButton(text=t("bot.dup_keep"), callback_data=f"dupkeep:{new_id}"),
         ]
     ]
     if base := get_settings().web_base_url:
-        rows.append([InlineKeyboardButton(text="🔎 Открыть записанный", url=f"{base}/receipts/{old_id}")])
+        rows.append([InlineKeyboardButton(text=t("bot.open_recorded"), url=f"{base}/receipts/{old_id}")])
     return InlineKeyboardMarkup(inline_keyboard=rows)

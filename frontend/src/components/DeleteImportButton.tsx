@@ -2,6 +2,7 @@ import { Button, Group, Modal, Stack, Text, type ButtonProps } from '@mantine/co
 import { useDisclosure } from '@mantine/hooks'
 import { IconTrash } from '@tabler/icons-react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 import { api } from '../api'
 import { notifyError, notifyOk, invalidateRecords } from '../hooks'
 
@@ -12,12 +13,13 @@ export function DeleteImportButton({
   onDone,
   ...props
 }: { importId: string; count?: number; onDone?: () => void } & ButtonProps) {
+  const { t } = useTranslation()
   const qc = useQueryClient()
   const [opened, ctl] = useDisclosure()
   const del = useMutation({
     mutationFn: () => api<{ deleted: number }>(`/bank/imports/${encodeURIComponent(importId)}`, { method: 'DELETE' }),
     onSuccess: (r) => {
-      notifyOk(`Выписка удалена, записей: ${r.deleted}`)
+      notifyOk(t('import.deleted', { count: r.deleted }))
       ctl.close()
       invalidateRecords(qc)
       onDone?.()
@@ -27,20 +29,19 @@ export function DeleteImportButton({
   return (
     <>
       <Button size="xs" variant="default" color="red" leftSection={<IconTrash size={14} />} onClick={ctl.open} {...props}>
-        Удалить всю выписку
+        {t('import.delete_all')}
       </Button>
-      <Modal opened={opened} onClose={ctl.close} title="Удалить выписку?">
+      <Modal opened={opened} onClose={ctl.close} title={t('import.delete_title')}>
         <Stack>
           <Text size="sm">
-            Будут удалены все записи, добавленные из этой выписки{count ? ` (${count})` : ''}. Остальные траты не
-            затронутся.
+            {t('import.delete_text', { count: count ? ` (${count})` : '' })}
           </Text>
           <Group justify="flex-end">
             <Button variant="default" onClick={ctl.close}>
-              Отмена
+              {t('common.cancel')}
             </Button>
             <Button color="red" onClick={() => del.mutate()} loading={del.isPending}>
-              Удалить
+              {t('common.delete')}
             </Button>
           </Group>
         </Stack>

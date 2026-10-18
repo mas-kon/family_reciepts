@@ -8,6 +8,7 @@ from app.api.schemas import Ok
 from app.clock import now_local
 from app.db.models import Budget, Category
 from app.db.session import get_session
+from app.i18n import t
 from app.stats import budgets_status
 
 router = APIRouter(prefix="/api", tags=["budgets"], dependencies=[Depends(current_viewer)])
@@ -41,7 +42,7 @@ async def budgets(month: str | None = None, session: AsyncSession = Depends(get_
 @router.put("/budgets", response_model=Ok)
 async def put_budget(data: BudgetIn, session: AsyncSession = Depends(get_session)):
     if not await session.get(Category, data.category_id):
-        raise HTTPException(404, "Категория не найдена")
+        raise HTTPException(404, t("api.category_not_found"))
     b = await session.scalar(select(Budget).where(Budget.category_id == data.category_id))
     if b:
         b.amount = data.amount

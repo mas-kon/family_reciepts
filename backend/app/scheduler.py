@@ -16,6 +16,7 @@ from app.config import get_settings
 from app.constants import Kind
 from app.db.models import Recurring
 from app.db.session import session_factory
+from app.i18n import t
 from app.receipts.service import ReceiptService
 from app.reports import build_monthly_report, last_month
 from app.stats import new_budget_alerts
@@ -54,7 +55,7 @@ async def send_monthly_report(bot: Bot | None, month: str | None = None) -> None
         await bot.send_photo(chat, BufferedInputFile(chart, f"report-{month}.png"))
         await bot.send_message(chat, text)
     else:
-        await bot.send_message(chat, text + "\n\nТрат за месяц нет.")
+        await bot.send_message(chat, text + "\n\n" + t("report.no_spending"))
     _sent_marker(month).parent.mkdir(parents=True, exist_ok=True)
     _sent_marker(month).touch()
 
@@ -82,15 +83,15 @@ async def book_recurring(bot: Bot | None) -> int:
                 source="recurring",
                 kind=rec.kind,
                 purchased_at=today.replace(day=_due_day(rec.day_of_month, today), hour=12, minute=0, second=0),
-                note="Регулярное поступление" if rec.kind == Kind.INCOME else "Регулярный платёж",
+                note=t("recurring.note_income") if rec.kind == Kind.INCOME else t("recurring.note_expense"),
             )
             rec.last_booked_month = month
             await session.commit()
             booked += 1
             chat = get_settings().notify_chat_id
             if bot and chat:
-                what = "регулярное поступление" if rec.kind == Kind.INCOME else "регулярный платёж"
-                await bot.send_message(chat, f"🔁 Записан {what}: {rec.name}, {rec.amount:.2f} €")
+                key = "recurring.booked_income" if rec.kind == Kind.INCOME else "recurring.booked_expense"
+                await bot.send_message(chat, t(key, name=rec.name, sum=f"{rec.amount:.2f}"))
                 for a in await new_budget_alerts(session, receipt):
                     await bot.send_message(chat, a)
     return booked

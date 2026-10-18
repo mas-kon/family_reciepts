@@ -13,9 +13,10 @@ from sqlalchemy.orm import aliased, noload
 from app.api.deps import Viewer, current_viewer
 from app.api.schemas import Ok
 from app.clock import now_local
-from app.constants import INCOME_DEFAULT, NO_DESCRIPTION, Kind
+from app.constants import Kind, income_default, no_description
 from app.db.models import Category, Item, Receipt, User
 from app.db.session import get_session, icontains
+from app.i18n import t
 from app.receipts.money import round2
 from app.receipts.service import ReceiptService
 from app.receipts.text import normalize_name
@@ -124,7 +125,8 @@ class ReprocessIn(BaseModel):
     model: str | None = None
 
 
-KIND_LABEL = {"expense": "Расход", "income": "Доход", "transfer": "Внутри семьи"}
+def kind_label(kind: str) -> str:
+    return t(f"kind.{kind}") if kind in ("expense", "income", "transfer") else kind
 
 
 # ---------- helpers ----------
@@ -136,7 +138,7 @@ def to_out(r: Receipt, items_count: int | None = None, first_name: str | None = 
         first = r.items[0] if r.items else None
         first_name = first.name_ru or first.name_original if first else None
         items_count = len(r.items)
-    title = r.store or r.note or first_name or "Чек"
+    title = r.store or r.note or first_name or t("bot.receipt")
     return {
         "id": r.id,
         "title": title,
@@ -173,14 +175,14 @@ def to_detail(r: Receipt) -> ReceiptDetail:
 async def load_receipt(session: AsyncSession, rid: int) -> Receipt:
     r = await session.get(Receipt, rid, populate_existing=True)
     if not r:
-        raise HTTPException(404, "Чек не найден")
+        raise HTTPException(404, t("api.receipt_not_found"))
     return r
 
 
 async def ensure_exists(session: AsyncSession, model, obj_id: int | None, what: str) -> None:
     """404/400 instead of a foreign key error (500) for an id that does not exist."""
     if obj_id is not None and await session.get(model, obj_id) is None:
-        raise HTTPException(400, f"{what}: такого нет")
+        raise HTTPException(400, t("api.not_found_named", what=what))
 
 
 def end_of(d: date | None) -> datetime | None:
@@ -234,7 +236,7 @@ async def list_receipts(
         conds.append(Receipt.items.any(Item.category_id.is_(None)))
     elif category_id:
         if not category_id.isdigit():
-            raise HTTPException(400, "Неверная категория")
+            raise HTTPException(400, t("api.bad_category"))
         cid = int(category_id)
         ids = [cid, *await session.scalars(select(Category.id).where(Category.parent_id == cid))]
         conds.append(Receipt.items.any(Item.category_id.in_(ids)))
@@ -290,7 +292,7 @@ async def get_image(rid: int, session: AsyncSession = Depends(get_session)):
     r = await load_receipt(session, rid)
     path = ReceiptService(session).image_abspath(r)
     if not path or not path.exists():
-        raise HTTPException(404, "Фото нет")
+        raise HTTPException(404, t("api.no_photo"))
     media = "image/heic" if path.suffix.lower() in {".heic", ".heif"} else None
     return FileResponse(path, media_type=media, headers={"Cache-Control": "private, no-cache"})  # revalidate (ETag): an id can be reused
 
@@ -299,7 +301,7 @@ async def get_image(rid: int, session: AsyncSession = Depends(get_session)):
 async def patch_receipt(rid: int, data: ReceiptPatch, session: AsyncSession = Depends(get_session)):
     r = await load_receipt(session, rid)
     fields = data.model_dump(exclude_unset=True)
-    await ensure_exists(session, User, fields.get("user_id"), "Член семьи")
+    await ensure_exists(session, User, fields.get("user_id"), t("api.member"))
     note = fields.pop("note", None)
     note_given = "note" in data.model_fields_set and (note or None) != r.note
     kind = fields.pop("kind", None)
@@ -309,7 +311,7 @@ async def patch_receipt(rid: int, data: ReceiptPatch, session: AsyncSession = De
     if kind:
         peer = await session.get(User, peer_id) if peer_id else None
         if kind == Kind.TRANSFER and peer_id and not peer:
-            raise HTTPException(404, "Член семьи не найден")
+            raise HTTPException(404, t("api.member_not_found"))
         await svc.set_kind(r, kind, peer)
         if remember and peer and r.counterparty:
             await svc.remember_bank_name(peer, r.counterparty)
@@ -347,10 +349,10 @@ async def add_manual(
     session: AsyncSession = Depends(get_session),
     viewer: Viewer = Depends(current_viewer),
 ):
-    await ensure_exists(session, Category, data.category_id, "Категория")
-    await ensure_exists(session, User, data.user_id, "Член семьи")
+    await ensure_exists(session, Category, data.category_id, t("api.category"))
+    await ensure_exists(session, User, data.user_id, t("api.member"))
     svc = ReceiptService(session)
-    name = (data.name or "").strip() or (INCOME_DEFAULT if data.kind == Kind.INCOME else NO_DESCRIPTION)
+    name = (data.name or "").strip() or (income_default() if data.kind == Kind.INCOME else no_description())
     category_id = data.category_id
     if data.kind == Kind.INCOME and category_id is None:
         category_id = await svc.income_category(name)
@@ -372,7 +374,7 @@ async def add_manual(
 
 @router.post("/receipts/{rid}/items", response_model=ReceiptDetail)
 async def add_item(rid: int, data: ItemIn, session: AsyncSession = Depends(get_session)):
-    await ensure_exists(session, Category, data.category_id, "Категория")
+    await ensure_exists(session, Category, data.category_id, t("api.category"))
     r = await load_receipt(session, rid)
     pos = max((i.position for i in r.items), default=-1) + 1
     session.add(
@@ -396,9 +398,9 @@ async def add_item(rid: int, data: ItemIn, session: AsyncSession = Depends(get_s
 async def patch_item(item_id: int, data: ItemPatch, session: AsyncSession = Depends(get_session)):
     item = await session.get(Item, item_id)
     if not item:
-        raise HTTPException(404, "Позиция не найдена")
+        raise HTTPException(404, t("api.item_not_found"))
     fields = data.model_dump(exclude_unset=True, exclude={"remember"})
-    await ensure_exists(session, Category, fields.get("category_id"), "Категория")
+    await ensure_exists(session, Category, fields.get("category_id"), t("api.category"))
     category_changed = "category_id" in fields and fields["category_id"] != item.category_id
     for k, v in fields.items():
         setattr(item, k, v)
@@ -416,7 +418,7 @@ async def patch_item(item_id: int, data: ItemPatch, session: AsyncSession = Depe
 async def delete_item(item_id: int, session: AsyncSession = Depends(get_session)):
     item = await session.get(Item, item_id)
     if not item:
-        raise HTTPException(404, "Позиция не найдена")
+        raise HTTPException(404, t("api.item_not_found"))
     rid = item.receipt_id
     await session.delete(item)
     await session.commit()
@@ -452,19 +454,19 @@ async def export_csv(
     w = csv.writer(buf, delimiter=";")
     w.writerow(
         [
-            "Дата",
-            "Магазин",
-            "Кто",
-            "Позиция (оригинал)",
-            "Позиция",
-            "Кол-во",
-            "Цена",
-            "Сумма, €",
-            "Категория",
-            "Подкатегория",
-            "Чек №",
-            "Источник",
-            "Тип",
+            t("csv.date"),
+            t("csv.store"),
+            t("csv.who"),
+            t("csv.item_original"),
+            t("csv.item"),
+            t("csv.qty"),
+            t("csv.price"),
+            t("csv.total"),
+            t("csv.category"),
+            t("csv.subcategory"),
+            t("csv.receipt_no"),
+            t("csv.source"),
+            t("csv.type"),
         ]
     )
     for item, r, user_name, cat, parent in rows:
@@ -482,7 +484,7 @@ async def export_csv(
                 cat if parent else "",
                 r.id,
                 r.source,
-                KIND_LABEL.get(r.kind, r.kind),
+                kind_label(r.kind),
             ]
         )
     buf.seek(0)

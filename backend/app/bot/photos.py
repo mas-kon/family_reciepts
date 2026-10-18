@@ -11,6 +11,7 @@ from app.bot.common import download, edit, get_sender, llm_slots, send_alerts
 from app.bot.statements import read_statement
 from app.bot.ui import duplicate_keyboard, format_receipt, receipt_keyboard
 from app.db.session import session_factory
+from app.i18n import t
 from app.receipts.service import ProcessResult, ReceiptService, split_who
 from app.stats import new_budget_alerts
 
@@ -48,7 +49,7 @@ async def on_pdf(message: Message, bot: Bot):
 
 
 async def handle_image(message: Message, bot: Bot, file_id: str, ext: str, data: bytes | None = None):
-    status = await message.reply("⏳ Распознаю чек…")
+    status = await message.reply(t("bot.photo_reading"))
     try:
         if data is None:
             data = await download(bot, file_id)
@@ -78,38 +79,36 @@ async def handle_image(message: Message, bot: Bot, file_id: str, ext: str, data:
                 )
             if res.duplicate_of:
                 d = res.duplicate_of
-                when = f" от {d.purchased_at:%d.%m.%Y}" if d.purchased_at else ""
-                await edit(status, f"♻️ Этот чек уже записан{when}.", receipt_keyboard(d.id))
+                when = t("bot.bank_from", date=f"{d.purchased_at:%d.%m.%Y}") if d.purchased_at else ""
+                await edit(status, t("bot.photo_dup", when=when), receipt_keyboard(d.id))
                 return
             if res.not_receipt:
                 await edit(
                     status,
-                    "🤔 Не похоже на чек, ничего не записал. "
-                    "Выписку из банка присылайте PDF-файлом или загрузите в вебе.",
+                    t("bot.photo_not_receipt"),
                 )
                 return
             receipt = res.receipt
             if receipt is None:
-                await edit(status, "❌ Не удалось записать чек.")
+                await edit(status, t("bot.photo_save_failed"))
                 return
             receipt.bot_message_id = status.message_id
             await session.commit()
             if res.error:
                 await edit(
                     status,
-                    "❌ Не удалось распознать: нейросеть недоступна.\n"
-                    "Фото сохранено, распознавание можно повторить в вебе.",
+                    t("bot.photo_llm_down"),
                     receipt_keyboard(receipt.id),
                 )
                 return
             text = await format_receipt(session, receipt, sender.id if sender else None)
             if d := res.maybe_duplicate_of:
-                when = f" от {d.purchased_at:%d.%m.%Y %H:%M}" if d.purchased_at else ""
-                text += f"\n\n❓ <b>Не дубль ли это?</b> Такой же чек из того же магазина уже записан{when} (№{d.id})."
+                when = t("bot.bank_from", date=f"{d.purchased_at:%d.%m.%Y %H:%M}") if d.purchased_at else ""
+                text += "\n\n" + t("bot.photo_maybe_dup", when=when, id=d.id)
                 await edit(status, text, duplicate_keyboard(receipt.id, d.id))
                 return
             await edit(status, text, receipt_keyboard(receipt.id))
             await send_alerts(bot, message.chat.id, await new_budget_alerts(session, receipt))
     except Exception:
         log.exception("failed to process receipt")
-        await edit(status, "❌ Что-то пошло не так при обработке чека.")
+        await edit(status, t("bot.photo_failed"))

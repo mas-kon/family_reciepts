@@ -6,7 +6,7 @@ A Telegram bot for a family group plus a web app for tracking expenses.
 
 Buy something, take a photo of the receipt, send it to the group. The bot reads the receipt's QR code, passes the photo to an LLM, gets back the list of purchases with categories and stores it in the database. The web app shows who spends what, where and on what, next to the original receipt photo for checking.
 
-The interface, the bot's replies and the default categories are in Russian. Receipts are expected from Bulgaria, and all amounts are in euros. In this document, interface labels are given in English with the Russian original in brackets, so you can find them on screen.
+The interface, the bot's replies, reports, the default categories and the LLM's answers are in one language for the whole family: Russian (default), English or Bulgarian. It is chosen under Settings → Family («Настройки → Семья»). Standard categories are renamed when the language changes; categories you renamed or added yourself are kept as they are. Receipts are expected from Bulgaria, and all amounts are in euros. In this document, interface labels are given in English with the Russian original in brackets, so you can find them on screen.
 
 ## Features
 
@@ -287,6 +287,7 @@ Where things are in the backend:
 | `app/bot/ui.py` | bot messages and buttons, also used by the jobs and the mailbox poller |
 | `app/family.py` | family members found by name, card, e-mail or the name in the bank |
 | `app/clock.py` | local time (`now_local`) |
+| `app/i18n.py`, `app/locales/` | the family's language and message catalogs (ru, en, bg) |
 | `app/constants.py` | record kinds and shared names |
 | `app/api/` | web API, one module per resource (receipts, stats, users, categories, budgets, recurring, llm, ai, auth) |
 

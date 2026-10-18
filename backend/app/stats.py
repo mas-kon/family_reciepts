@@ -22,6 +22,7 @@ from app.db.models import (
     User,
 )
 from app.db.session import rowcount
+from app.i18n import t
 
 EUR = Item.total
 # product key: canonical product if grouped (app.products), otherwise the line's own name
@@ -208,7 +209,7 @@ async def income_summary(
     by_cat = await session.execute(
         _filtered(
             select(
-                func.coalesce(Category.name, "Без категории").label("name"),
+                func.coalesce(Category.name, t("cat.uncategorized")).label("name"),
                 func.sum(EUR).label("amount"),
             )
             .select_from(Item)
@@ -219,7 +220,7 @@ async def income_summary(
             user_id,
             kind=Kind.INCOME,
         )
-        .group_by(func.coalesce(Category.name, "Без категории"))
+        .group_by(func.coalesce(Category.name, t("cat.uncategorized")))
         .order_by(func.sum(EUR).desc())
     )
     cats = [{"name": r.name, "amount": round(r.amount, 2)} for r in by_cat]
@@ -255,7 +256,7 @@ async def monthly(
         _filtered(
             select(
                 month_expr.label("month"),
-                func.coalesce(Parent.name, Category.name, "Без категории").label("category"),
+                func.coalesce(Parent.name, Category.name, t("cat.uncategorized")).label("category"),
                 func.sum(EUR).label("amount"),
             )
             .select_from(Item)
@@ -265,7 +266,7 @@ async def monthly(
             start,
             end,
             user_id,
-        ).group_by(month_expr, func.coalesce(Parent.name, Category.name, "Без категории"))
+        ).group_by(month_expr, func.coalesce(Parent.name, Category.name, t("cat.uncategorized")))
     )
     incomes = await session.execute(
         _filtered(
@@ -372,8 +373,8 @@ async def new_budget_alerts(session: AsyncSession, receipt: Receipt) -> list[str
         if not claimed:
             continue
         if level == 100:
-            messages.append(f"🔴 Бюджет «{b.category.name}» превышен: {spent:.2f} € из {b.amount:.2f} €")
+            messages.append(t("budget.exceeded", name=b.category.name, spent=f"{spent:.2f}", amount=f"{b.amount:.2f}"))
         else:
-            messages.append(f"🟡 Бюджет «{b.category.name}»: потрачено {pct:.0f}% ({spent:.2f} € из {b.amount:.2f} €)")
+            messages.append(t("budget.near", name=b.category.name, pct=f"{pct:.0f}", spent=f"{spent:.2f}", amount=f"{b.amount:.2f}"))
     await session.commit()
     return messages

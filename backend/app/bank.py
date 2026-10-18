@@ -22,9 +22,10 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.clock import now_local
-from app.constants import INCOME_DEFAULT, Kind
+from app.constants import Kind, income_default
 from app.db.models import Receipt, User
 from app.family import FamilyIndex
+from app.i18n import t
 from app.llm.schema import ParsedBankTx
 from app.receipts.service import ReceiptService
 from app.receipts.text import normalize_name
@@ -162,13 +163,13 @@ async def book_tx(
     external_id: str | None = None,
 ) -> Receipt:
     if kind == Kind.TRANSFER:
-        name = tx.merchant or (f"Перевод: {peer.name}" if peer else "Перевод в семье")
+        name = tx.merchant or (t("bank.transfer_to", name=peer.name) if peer else t("bank.transfer_family"))
         category_id = None
     elif kind == Kind.INCOME:
-        name = tx.merchant or INCOME_DEFAULT
+        name = tx.merchant or income_default()
         category_id = await svc.income_category(name)
     else:
-        name = tx.merchant or "Оплата картой"
+        name = tx.merchant or t("bank.card_payment")
         # a transfer to a person has no shop to guess the category from
         category_id = await svc.classify(name, tx.amount) if tx.merchant and tx.type == "purchase" else None
     return await svc.book_single(
@@ -179,7 +180,7 @@ async def book_tx(
         source="bank",
         purchased_at=tx.date,
         store=tx.merchant,
-        note=f"Карта *{tx.card}" if tx.card else None,
+        note=t("bank.card_note", card=tx.card) if tx.card else None,
         chat_id=chat_id,
         message_id=message_id,
         external_id=external_id or tx_external_id(tx),
@@ -300,7 +301,7 @@ def statement_text(data: bytes, filename: str) -> str:
         reader = PdfReader(io.BytesIO(data))
         text = "\n".join((p.extract_text() or "") for p in reader.pages)
         if not text.strip():
-            raise ValueError("В PDF нет текста (похоже на скан). Выгрузите выписку в CSV.")
+            raise ValueError(t("bank.pdf_scan"))
         return text
     text = ""
     for enc in ("utf-8-sig", "cp1251", "latin-1"):

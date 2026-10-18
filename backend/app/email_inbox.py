@@ -24,6 +24,7 @@ from app.clock import now_local
 from app.config import get_settings
 from app.db.session import session_factory
 from app.family import owner_by_email
+from app.i18n import t
 from app.receipts.service import ProcessResult, ReceiptService
 
 log = logging.getLogger(__name__)
@@ -124,7 +125,7 @@ def parse_mail(raw: bytes) -> ParsedMail:
         message_id=(msg.get("Message-ID") or "").strip() or "sha1:" + hashlib.sha1(raw).hexdigest(),
         sender=sender,
         subject=subject,
-        text=f"Тема: {subject}\n\n{body}".strip(),
+        text=t("mail.subject_line", subject=subject, body=body).strip(),
         attachments=attachments,
     )
 
@@ -216,7 +217,7 @@ async def poll_inbox(bot=None) -> int:
                 status.received += 1
                 chat = s.notify_chat_id
                 if bot and chat:
-                    text = "📧 Чек из почты\n" + await format_receipt(session, res.receipt)
+                    text = t("mail.receipt_head") + "\n" + await format_receipt(session, res.receipt)
                     msg = await bot.send_message(chat, text, reply_markup=receipt_keyboard(res.receipt.id))
                     res.receipt.chat_id, res.receipt.bot_message_id = chat, msg.message_id
                     await session.commit()

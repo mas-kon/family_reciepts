@@ -6,8 +6,9 @@ from typing import cast
 
 from sqlalchemy import select
 
-from app.constants import NO_DESCRIPTION
+from app.constants import no_description
 from app.db.models import Receipt, User
+from app.i18n import t
 from app.llm.prompt import VOICE_SYSTEM
 from app.receipts.service import ReceiptService
 
@@ -44,6 +45,8 @@ class VoiceResult:
     transcript: str
     receipt: Receipt | None = None
     problem: str | None = None
+    # the person named in the message is not in the family
+    unknown_who: bool = False
 
 
 async def handle_voice(
@@ -54,18 +57,18 @@ async def handle_voice(
     chat_id: int | None = None,
     message_id: int | None = None,
 ) -> VoiceResult:
-    family = ", ".join(u.name for u in await svc.session.scalars(select(User))) or "нет"
+    family = ", ".join(u.name for u in await svc.session.scalars(select(User))) or t("voice.nobody")
     res = await svc.llm.parse_voice(wav, VOICE_SYSTEM.replace("{family}", family))
     v = res.data
     if not v.has_speech or not v.is_expense or v.amount is None or v.amount <= 0:
-        return VoiceResult(transcript=v.transcript, problem="Не расслышал сумму")
+        return VoiceResult(transcript=v.transcript, problem=t("voice.no_amount"))
     owner = sender
     if v.who:
         owner = await svc.find_user(v.who)
         if owner is None:
-            return VoiceResult(transcript=v.transcript, problem=f"Не знаю, кто такой «{v.who}»")
-    name = (v.name or "").strip().capitalize() or NO_DESCRIPTION
-    category_id = await svc.classify(name, v.amount) if name != NO_DESCRIPTION else None
+            return VoiceResult(transcript=v.transcript, problem=t("voice.unknown_who", who=v.who), unknown_who=True)
+    name = (v.name or "").strip().capitalize() or no_description()
+    category_id = await svc.classify(name, v.amount) if name != no_description() else None
     receipt = await svc.book_single(
         name=name,
         amount=v.amount,

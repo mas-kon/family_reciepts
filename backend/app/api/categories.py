@@ -9,6 +9,7 @@ from app.api.deps import current_viewer
 from app.api.schemas import Ok
 from app.db.models import Category, Item
 from app.db.session import get_session
+from app.i18n import t
 
 router = APIRouter(prefix="/api", tags=["categories"], dependencies=[Depends(current_viewer)])
 
@@ -47,7 +48,7 @@ async def create_category(data: CategoryIn, session: AsyncSession = Depends(get_
     if data.parent_id:
         parent = await session.get(Category, data.parent_id)
         if not parent or parent.parent_id:
-            raise HTTPException(400, "Родителем может быть только категория верхнего уровня")
+            raise HTTPException(400, t("api.parent_top_level"))
         data.kind = parent.kind
     same = await session.scalar(
         select(Category.id).where(
@@ -56,7 +57,7 @@ async def create_category(data: CategoryIn, session: AsyncSession = Depends(get_
         )
     )
     if same:
-        raise HTTPException(409, "Такая категория уже есть")
+        raise HTTPException(409, t("api.category_exists"))
     order = await session.scalar(
         select(func.coalesce(func.max(Category.sort_order), 0)).where(
             Category.parent_id.is_(None) if data.parent_id is None else Category.parent_id == data.parent_id
@@ -72,7 +73,7 @@ async def create_category(data: CategoryIn, session: AsyncSession = Depends(get_
 async def patch_category(cid: int, data: CategoryPatch, session: AsyncSession = Depends(get_session)):
     c = await session.get(Category, cid)
     if not c:
-        raise HTTPException(404, "Категория не найдена")
+        raise HTTPException(404, t("api.category_not_found"))
     for k, v in data.model_dump(exclude_unset=True).items():
         setattr(c, k, v.strip() if isinstance(v, str) else v)
     await session.commit()
@@ -83,11 +84,11 @@ async def patch_category(cid: int, data: CategoryPatch, session: AsyncSession = 
 async def delete_category(cid: int, session: AsyncSession = Depends(get_session)):
     c = await session.get(Category, cid)
     if not c:
-        raise HTTPException(404, "Категория не найдена")
+        raise HTTPException(404, t("api.category_not_found"))
     used = await session.scalar(select(func.count(Item.id)).where(Item.category_id == cid))
     children = await session.scalar(select(func.count(Category.id)).where(Category.parent_id == cid))
     if used or children:
-        raise HTTPException(409, "Категория используется: сначала перенесите позиции и подкатегории")
+        raise HTTPException(409, t("api.category_used"))
     await session.delete(c)
     await session.commit()
     return Ok()

@@ -3,6 +3,7 @@ import re
 import unicodedata
 
 from app.db.models import Category
+from app.db.seed import OTHER
 
 _NON_WORD = re.compile(r"[^\w%]+", re.UNICODE)
 _SPACES = re.compile(r"\s+")
@@ -41,13 +42,13 @@ def leaf_categories(categories: list[Category]) -> dict[str, Category]:
 class CategoryMatcher:
     """Turns free-form category text returned by the LLM into a category id."""
 
-    def __init__(self, categories: list[Category], fallback_name: str = "Прочее"):
+    def __init__(self, categories: list[Category], fallback_key: str = OTHER):
         self.paths = leaf_categories(categories)
         self._lower = {normalize_name(p): c for p, c in self.paths.items()}
         # also allow matching by the leaf name alone
         for path, c in self.paths.items():
             self._lower.setdefault(normalize_name(path.split(" / ")[-1]), c)
-        self.fallback = next((c for c in categories if c.name == fallback_name and not c.parent_id), None)
+        self.fallback = next((c for c in categories if c.key == fallback_key), None)
 
     def path_list(self) -> list[str]:
         return list(self.paths)

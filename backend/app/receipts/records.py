@@ -6,7 +6,7 @@ from datetime import datetime
 from sqlalchemy import select
 
 from app.clock import now_local
-from app.constants import INCOME_DEFAULT, NO_DESCRIPTION, PURCHASE_DEFAULT, Kind
+from app.constants import Kind, income_default, no_description, placeholder_names
 from app.db.models import Category, CategoryOverride, Item, Receipt, User
 from app.family import apply_family_names
 from app.llm.client import LLMError
@@ -73,7 +73,7 @@ class RecordsMixin(ServiceBase):
         quick = parse_manual_text(text)
         if not quick:
             return None
-        name = quick[0] or INCOME_DEFAULT
+        name = quick[0] or income_default()
         return await self.book_single(
             name=name,
             amount=quick[1],
@@ -97,7 +97,7 @@ class RecordsMixin(ServiceBase):
         quick = parse_manual_text(text)
         if quick and quick[0] is None:
             return await self.book_single(
-                name=NO_DESCRIPTION,
+                name=no_description(),
                 amount=quick[1],
                 category_id=None,
                 user_id=user.id if user else None,
@@ -155,7 +155,7 @@ class RecordsMixin(ServiceBase):
         items = await receipt.awaitable_attrs.items
         if text and len(items) == 1 and receipt.kind == Kind.INCOME:
             it = items[0]
-            if it.name_original in {NO_DESCRIPTION, INCOME_DEFAULT}:
+            if it.name_original in placeholder_names("record.no_description", "record.income_default"):
                 category_id = await self.income_category(text)
                 it.name_original = it.name_ru = text[:300]
                 it.name_normalized = normalize_name(text)
@@ -166,7 +166,7 @@ class RecordsMixin(ServiceBase):
             and receipt.kind == Kind.EXPENSE
             and (
                 items[0].category_id is None
-                or items[0].name_original in {NO_DESCRIPTION, PURCHASE_DEFAULT, receipt.store}
+                or items[0].name_original in {*placeholder_names("record.no_description", "record.purchase_default"), receipt.store}
             )
         ):
             it = items[0]

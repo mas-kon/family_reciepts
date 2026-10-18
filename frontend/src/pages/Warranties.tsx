@@ -2,19 +2,22 @@ import { Alert, Anchor, Badge, Group, Loader, Stack, Switch, Table, Text, Title 
 import { IconPhoto } from '@tabler/icons-react'
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 import { api, qs, type Warranty } from '../api'
 import { dateOnly, money } from '../format'
 import { useMeta } from '../hooks'
 
 function DaysLeft({ days }: { days: number }) {
-  if (days < 0) return <Badge color="gray" variant="light">закончилась</Badge>
-  if (days <= 30) return <Badge color="red" variant="light">осталось {days} дн.</Badge>
-  if (days <= 90) return <Badge color="yellow" variant="light">осталось {days} дн.</Badge>
-  return <Badge color="teal" variant="light">ещё {Math.round(days / 30)} мес.</Badge>
+  const { t } = useTranslation()
+  if (days < 0) return <Badge color="gray" variant="light">{t('warranty.expired')}</Badge>
+  if (days <= 30) return <Badge color="red" variant="light">{t('warranty.days_left', { days })}</Badge>
+  if (days <= 90) return <Badge color="yellow" variant="light">{t('warranty.days_left', { days })}</Badge>
+  return <Badge color="teal" variant="light">{t('warranty.months_left', { months: Math.round(days / 30) })}</Badge>
 }
 
 export default function Warranties() {
+  const { t } = useTranslation()
   const meta = useMeta()
   const [expired, setExpired] = useState(false)
   const list = useQuery({
@@ -24,30 +27,28 @@ export default function Warranties() {
 
   return (
     <Stack>
-      <Title order={2}>Гарантии</Title>
+      <Title order={2}>{t('warranty.title')}</Title>
       <Text size="sm" c="dimmed">
-        Нейросеть отмечает гарантию у техники и бытовых приборов: срок с чека, а если его нет, 24 месяца для вещей
-        дороже 30 €. За {meta.data?.warranty_remind_days ?? 30} дней до конца бот напомнит в группе. Срок можно
-        поправить в позиции чека.
+        {t('warranty.hint', { days: meta.data?.warranty_remind_days ?? 30 })}
       </Text>
-      <Switch label="Показать закончившиеся" checked={expired} onChange={(e) => setExpired(e.currentTarget.checked)} />
+      <Switch label={t('warranty.show_expired')} checked={expired} onChange={(e) => setExpired(e.currentTarget.checked)} />
       {list.isError ? (
-        <Alert color="red" title="Не удалось загрузить гарантии">
+        <Alert color="red" title={t('warranty.load_failed')}>
           {(list.error as Error).message}
         </Alert>
       ) : list.isLoading ? (
         <Loader />
       ) : !list.data?.length ? (
-        <Text c="dimmed">Вещей на гарантии пока нет.</Text>
+        <Text c="dimmed">{t('warranty.none')}</Text>
       ) : (
         <Table.ScrollContainer minWidth={640}>
           <Table verticalSpacing="xs" fz="sm" highlightOnHover>
             <Table.Thead>
               <Table.Tr>
-                <Table.Th>Вещь</Table.Th>
-                <Table.Th>Куплено</Table.Th>
-                <Table.Th className="num">Цена</Table.Th>
-                <Table.Th>Гарантия до</Table.Th>
+                <Table.Th>{t('warranty.col_item')}</Table.Th>
+                <Table.Th>{t('warranty.col_bought')}</Table.Th>
+                <Table.Th className="num">{t('warranty.col_price')}</Table.Th>
+                <Table.Th>{t('warranty.col_until')}</Table.Th>
                 <Table.Th />
               </Table.Tr>
             </Table.Thead>
@@ -66,7 +67,7 @@ export default function Warranties() {
                   </Table.Td>
                   <Table.Td>
                     <Group gap={6} wrap="nowrap">
-                      {w.has_image && <IconPhoto size={14} opacity={0.5} aria-label="Есть фото чека" />}
+                      {w.has_image && <IconPhoto size={14} opacity={0.5} aria-label={t('warranty.has_photo')} />}
                       {dateOnly(w.purchased_at)}
                       {w.store && <Text span size="sm" c="dimmed">{w.store}</Text>}
                     </Group>

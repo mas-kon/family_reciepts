@@ -1,5 +1,6 @@
 import { Group, SegmentedControl, Stack, Table, Text } from '@mantine/core'
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   Bar,
   BarChart,
@@ -15,9 +16,10 @@ import {
 } from 'recharts'
 import type { MonthRow, PricePoint } from '../api'
 import { dateOnly, money, monthLabel } from '../format'
+import { intlLocale } from '../i18n'
 import { usePalette } from '../palette'
 
-const fmt = (v: number) => v.toLocaleString('ru-RU', { maximumFractionDigits: 0 })
+const fmt = (v: number) => v.toLocaleString(intlLocale(), { maximumFractionDigits: 0 })
 
 function TooltipBox({ title, lines }: { title: string; lines: { label: string; value: string; color?: string }[] }) {
   return (
@@ -50,6 +52,7 @@ export function HBars({
   height?: number
   onClick?: (key: string | number | null | undefined) => void
 }) {
+  const { t } = useTranslation()
   const p = usePalette()
   const h = height ?? Math.max(120, data.length * 30 + 20)
   return (
@@ -70,7 +73,7 @@ export function HBars({
             active && payload?.length ? (
               <TooltipBox
                 title={String(payload[0].payload.name)}
-                lines={[{ label: 'Сумма', value: money(payload[0].payload.amount) }]}
+                lines={[{ label: t('chart.amount'), value: money(payload[0].payload.amount) }]}
               />
             ) : null
           }
@@ -96,10 +99,10 @@ export function HBars({
 }
 
 const MAX_SERIES = 5
-const OTHER = 'Другое'
-
-/** Stacked monthly bars by top categories; the rest folds into "Другое". Has a table view. */
+/** Stacked monthly bars by top categories; the rest folds into "Other". Has a table view. */
 export function MonthlyStack({ rows }: { rows: MonthRow[] }) {
+  const { t } = useTranslation()
+  const OTHER = t('chart.other')
   const p = usePalette()
   const [view, setView] = useState('chart')
 
@@ -131,8 +134,8 @@ export function MonthlyStack({ rows }: { rows: MonthRow[] }) {
           value={view}
           onChange={setView}
           data={[
-            { value: 'chart', label: 'График' },
-            { value: 'table', label: 'Таблица' },
+            { value: 'chart', label: t('chart.chart') },
+            { value: 'table', label: t('chart.table') },
           ]}
         />
       </Group>
@@ -176,14 +179,14 @@ export function MonthlyStack({ rows }: { rows: MonthRow[] }) {
           <Table striped fz="sm">
             <Table.Thead>
               <Table.Tr>
-                <Table.Th>Месяц</Table.Th>
+                <Table.Th>{t('chart.month')}</Table.Th>
                 {series.map((k) => (
                   <Table.Th key={k} className="num">
                     {k}
                   </Table.Th>
                 ))}
-                <Table.Th className="num">Всего</Table.Th>
-                {hasIncome && <Table.Th className="num">Доходы</Table.Th>}
+                <Table.Th className="num">{t('chart.total')}</Table.Th>
+                {hasIncome && <Table.Th className="num">{t('chart.income')}</Table.Th>}
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
@@ -215,6 +218,7 @@ export function MonthlyStack({ rows }: { rows: MonthRow[] }) {
 
 /** Unit price over time for one product. */
 export function PriceLine({ points }: { points: PricePoint[] }) {
+  const { t } = useTranslation()
   const p = usePalette()
   const data = points
     .filter((x) => x.unit_price_eur !== null && x.purchased_at)
@@ -239,8 +243,8 @@ export function PriceLine({ points }: { points: PricePoint[] }) {
               <TooltipBox
                 title={String(payload[0].payload.date)}
                 lines={[
-                  { label: 'Цена', value: money(Number(payload[0].payload.unit_price_eur)) },
-                  { label: 'Магазин', value: payload[0].payload.store ?? '—' },
+                  { label: t('chart.price'), value: money(Number(payload[0].payload.unit_price_eur)) },
+                  { label: t('chart.store'), value: payload[0].payload.store ?? '—' },
                 ]}
               />
             ) : null

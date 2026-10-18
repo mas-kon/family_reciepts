@@ -1,12 +1,10 @@
 import dayjs from 'dayjs'
-import 'dayjs/locale/ru'
 import type { Category } from './api'
-
-dayjs.locale('ru')
+import i18n, { intlLocale } from './i18n'
 
 export function money(v: number | null | undefined): string {
   if (v === null || v === undefined) return '—'
-  return `${v.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`
+  return `${v.toLocaleString(intlLocale(), { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`
 }
 
 export function dateTime(v: string | null | undefined): string {
@@ -21,31 +19,26 @@ export function monthLabel(m: string): string {
   return dayjs(`${m}-01`).format('MMM YY')
 }
 
-export const STATUS_LABEL: Record<string, { label: string; color: string }> = {
-  ok: { label: 'Проверен', color: 'teal' },
-  needs_review: { label: 'Проверить', color: 'yellow' },
-  pending: { label: 'Обработка', color: 'gray' },
-  failed: { label: 'Ошибка', color: 'red' },
+export const STATUS_COLOR: Record<string, string> = {
+  ok: 'teal',
+  needs_review: 'yellow',
+  pending: 'gray',
+  failed: 'red',
 }
 
-export const SOURCE_LABEL: Record<string, string> = {
-  photo: 'Чек',
-  manual: 'Вручную',
-  recurring: 'Регулярный',
-  bank: 'Банк',
-  voice: 'Голос',
-  email: 'Почта',
-}
+/** Badge text and colour of a record status. */
+export const statusLabel = (status: string) => ({
+  label: i18n.t(`status.${status}`),
+  color: STATUS_COLOR[status] ?? 'gray',
+})
 
-/** "Выписка" for records booked from a bank statement, otherwise the source name. */
+export const sourceName = (source: string) => i18n.t(`source.${source}`)
+
+/** "Statement" for records booked from a bank statement, otherwise the source name. */
 export const sourceLabel = (r: { source: string; import_id?: string | null }) =>
-  r.import_id ? 'Выписка' : SOURCE_LABEL[r.source]
+  r.import_id ? i18n.t('source.statement') : sourceName(r.source)
 
-export const KIND_LABEL: Record<string, string> = {
-  expense: 'Расход',
-  income: 'Доход',
-  transfer: 'Внутри семьи',
-}
+export const kindLabel = (kind: string) => i18n.t(`kind.${kind}`)
 
 /** Signed amount: "+1500.00 €" for an income, plain for an expense. */
 export const kindMoney = (kind: string, v: number | null | undefined) =>
@@ -57,7 +50,7 @@ export function categoryOptions(cats: Category[], leavesOnly = false, kind: 'exp
   return parents.map((p) => {
     const children = cats.filter((c) => c.parent_id === p.id)
     const items = children.length
-      ? [...(leavesOnly ? [] : [{ value: String(p.id), label: `${p.name} (всё)` }]),
+      ? [...(leavesOnly ? [] : [{ value: String(p.id), label: i18n.t('category.all', { name: p.name }) }]),
          ...children.map((c) => ({ value: String(c.id), label: c.name }))]
       : [{ value: String(p.id), label: p.name }]
     return { group: p.name, items }
@@ -65,7 +58,7 @@ export function categoryOptions(cats: Category[], leavesOnly = false, kind: 'exp
 }
 
 export function categoryName(cats: Category[] | undefined, id: number | null): string {
-  if (!cats || id === null) return 'Без категории'
+  if (!cats || id === null) return i18n.t('category.none')
   const c = cats.find((x) => x.id === id)
   if (!c) return '—'
   const p = c.parent_id ? cats.find((x) => x.id === c.parent_id) : null
@@ -94,3 +87,10 @@ export function periodRange(key: PeriodKey, custom?: [string, string]): { date_f
       return {}
   }
 }
+
+const SOURCES = ['photo', 'manual', 'recurring', 'bank', 'voice', 'email']
+const KINDS = ['expense', 'income', 'transfer']
+
+export const statusOptions = () => Object.keys(STATUS_COLOR).map((value) => ({ value, label: i18n.t(`status.${value}`) }))
+export const sourceOptions = () => SOURCES.map((value) => ({ value, label: sourceName(value) }))
+export const kindOptions = () => KINDS.map((value) => ({ value, label: kindLabel(value) }))

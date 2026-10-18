@@ -19,6 +19,7 @@ import { useDebouncedValue } from '@mantine/hooks'
 import { IconArrowsJoin, IconArrowsSplit, IconSearch, IconWand } from '@tabler/icons-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 import { api, qs, type PricePoint, type Product } from '../api'
 import { PriceLine } from '../components/Charts'
@@ -26,6 +27,7 @@ import { dateOnly, money } from '../format'
 import { notifyError, notifyOk } from '../hooks'
 
 export default function Products() {
+  const { t } = useTranslation()
   const qc = useQueryClient()
   const [search, setSearch] = useState('')
   const [q] = useDebouncedValue(search, 300)
@@ -52,7 +54,7 @@ export default function Products() {
     mutationFn: (product: string) =>
       api<{ lines: number }>('/products/merge', { method: 'POST', json: { keys: Object.keys(checked), product } }),
     onSuccess: (_, product) => {
-      notifyOk('Товары объединены')
+      notifyOk(t('products.merged'))
       setChecked({})
       setMergeName(null)
       setSelected(null)
@@ -64,7 +66,7 @@ export default function Products() {
   const split = useMutation({
     mutationFn: (key: string) => api('/products/split', { method: 'POST', json: { key } }),
     onSuccess: () => {
-      notifyOk('Товар разделён')
+      notifyOk(t('products.split'))
       setSelected(null)
       refresh()
     },
@@ -73,7 +75,7 @@ export default function Products() {
   const group = useMutation({
     mutationFn: () => api<{ queued: number }>('/products/group', { method: 'POST' }),
     onSuccess: (r) => {
-      notifyOk(r.queued ? `Группирую в фоне названий: ${r.queued}. Обновите список через минуту.` : 'Новых названий нет')
+      notifyOk(r.queued ? t('products.grouping', { count: r.queued }) : t('products.no_new'))
       refresh()
     },
     onError: notifyError,
@@ -91,20 +93,19 @@ export default function Products() {
   return (
     <Stack>
       <Group justify="space-between">
-        <Title order={2}>Динамика цен</Title>
+        <Title order={2}>{t('products.title')}</Title>
         <Button variant="default" leftSection={<IconWand size={16} />} onClick={() => group.mutate()} loading={group.isPending}>
-          Склеить автоматически
+          {t('products.auto_group')}
         </Button>
       </Group>
       <Text c="dimmed" size="sm">
-        В разных магазинах один товар называется по-разному. Нейросеть объединяет такие названия сама, после каждого
-        чека. Можно поправить вручную: отметьте товары и нажмите «Объединить». Цена за единицу в евро.
+        {t('products.hint')}
       </Text>
       <Grid>
         <Grid.Col span={{ base: 12, md: 5 }}>
           <Card withBorder padding="xs">
             <TextInput
-              placeholder="Найти товар"
+              placeholder={t('products.search')}
               leftSection={<IconSearch size={16} />}
               value={search}
               onChange={(e) => setSearch(e.currentTarget.value)}
@@ -118,10 +119,10 @@ export default function Products() {
                   disabled={checkedList.length < 2}
                   onClick={() => setMergeName(checkedList[0].name || checkedList[0].key)}
                 >
-                  Объединить ({checkedList.length})
+                  {t('products.merge_n', { count: checkedList.length })}
                 </Button>
                 <Button size="xs" variant="subtle" onClick={() => setChecked({})}>
-                  Снять отметки
+                  {t('products.unselect')}
                 </Button>
               </Group>
             )}
@@ -133,9 +134,9 @@ export default function Products() {
                   <Table.Thead>
                     <Table.Tr>
                       <Table.Th w={30} />
-                      <Table.Th>Товар</Table.Th>
-                      <Table.Th className="num">Покупок</Table.Th>
-                      <Table.Th className="num">Цена</Table.Th>
+                      <Table.Th>{t('products.col_product')}</Table.Th>
+                      <Table.Th className="num">{t('products.col_purchases')}</Table.Th>
+                      <Table.Th className="num">{t('products.col_price')}</Table.Th>
                     </Table.Tr>
                   </Table.Thead>
                   <Table.Tbody>
@@ -149,7 +150,7 @@ export default function Products() {
                         <Table.Td onClick={(e) => e.stopPropagation()}>
                           <Checkbox
                             size="xs"
-                            aria-label="Отметить"
+                            aria-label={t('products.select')}
                             checked={!!checked[p.key]}
                             onChange={(e) => toggle(p, e.currentTarget.checked)}
                           />
@@ -159,7 +160,7 @@ export default function Products() {
                             {p.name || p.name_original}
                             {p.variants > 1 && (
                               <Badge size="xs" variant="light" ml={6}>
-                                {p.variants} названия
+                                {t('products.variants', { count: p.variants })}
                               </Badge>
                             )}
                           </Text>
@@ -177,7 +178,7 @@ export default function Products() {
                     ))}
                   </Table.Tbody>
                 </Table>
-                {list.data?.length === 0 && <Text c="dimmed">Товаров пока нет</Text>}
+                {list.data?.length === 0 && <Text c="dimmed">{t('products.none')}</Text>}
               </ScrollArea>
             )}
           </Card>
@@ -185,7 +186,7 @@ export default function Products() {
         <Grid.Col span={{ base: 12, md: 7 }}>
           <Card withBorder padding="md">
             {!selected ? (
-              <Text c="dimmed">Выберите товар слева</Text>
+              <Text c="dimmed">{t('products.pick')}</Text>
             ) : (
               <Stack>
                 <Group justify="space-between" align="flex-start">
@@ -203,7 +204,7 @@ export default function Products() {
                       onClick={() => split.mutate(selected.key)}
                       loading={split.isPending}
                     >
-                      Разделить
+                      {t('products.split_btn')}
                     </Button>
                   )}
                 </Group>
@@ -213,11 +214,11 @@ export default function Products() {
                     <Table fz="sm">
                       <Table.Thead>
                         <Table.Tr>
-                          <Table.Th>Дата</Table.Th>
-                          <Table.Th>Магазин</Table.Th>
-                          <Table.Th>Как в чеке</Table.Th>
-                          <Table.Th className="num">Кол-во</Table.Th>
-                          <Table.Th className="num">Цена</Table.Th>
+                          <Table.Th>{t('products.col_date')}</Table.Th>
+                          <Table.Th>{t('products.col_store')}</Table.Th>
+                          <Table.Th>{t('products.col_as_receipt')}</Table.Th>
+                          <Table.Th className="num">{t('products.col_qty')}</Table.Th>
+                          <Table.Th className="num">{t('products.col_price')}</Table.Th>
                         </Table.Tr>
                       </Table.Thead>
                       <Table.Tbody>
@@ -246,23 +247,23 @@ export default function Products() {
         </Grid.Col>
       </Grid>
 
-      <Modal opened={mergeName !== null} onClose={() => setMergeName(null)} title="Объединить товары">
+      <Modal opened={mergeName !== null} onClose={() => setMergeName(null)} title={t('products.merge_title')}>
         <Stack>
           <Text size="sm">
-            {checkedList.map((p) => p.name || p.name_original).join(', ')} будут считаться одним товаром.
+            {t('products.merge_text', { names: checkedList.map((p) => p.name || p.name_original).join(', ') })}
           </Text>
           <TextInput
-            label="Название товара"
+            label={t('products.merge_name')}
             value={mergeName ?? ''}
             onChange={(e) => setMergeName(e.currentTarget.value)}
             data-autofocus
           />
           <Group justify="flex-end">
             <Button variant="default" onClick={() => setMergeName(null)}>
-              Отмена
+              {t('common.cancel')}
             </Button>
             <Button onClick={() => mergeName && merge.mutate(mergeName)} disabled={!mergeName?.trim()} loading={merge.isPending}>
-              Объединить
+              {t('products.merge_btn')}
             </Button>
           </Group>
         </Stack>

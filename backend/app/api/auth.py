@@ -15,6 +15,7 @@ from app.api.deps import COOKIE, MAX_AGE, Viewer, current_viewer, make_cookie
 from app.config import get_settings
 from app.db.models import User
 from app.db.session import get_session
+from app.i18n import t
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -74,7 +75,7 @@ async def _telegram_viewer(data: TelegramAuth, request: Request, session: AsyncS
     """Checks the widget signature and group membership; raises HTTPException(403) otherwise."""
     s = get_settings()
     if not s.bot_token or not verify_telegram(data, s.bot_token):
-        raise HTTPException(403, "Подпись Telegram не прошла проверку")
+        raise HTTPException(403, t("api.tg_signature"))
 
     bot = getattr(request.app.state, "bot", None)
     allowed = False
@@ -90,7 +91,7 @@ async def _telegram_viewer(data: TelegramAuth, request: Request, session: AsyncS
     else:
         allowed = bool(await session.scalar(select(User.id).where(User.telegram_id == data.id)))
     if not allowed:
-        raise HTTPException(403, "Вы не участник семейной группы")
+        raise HTTPException(403, t("api.not_member"))
 
     name = " ".join(x for x in (data.first_name, data.last_name) if x) or data.username or str(data.id)
     user = await session.scalar(select(User).where(User.telegram_id == data.id))
@@ -120,7 +121,7 @@ async def login_telegram_redirect(request: Request, session: AsyncSession = Depe
         data = TelegramAuth.model_validate(dict(request.query_params))
         viewer = await _telegram_viewer(data, request, session)
     except ValidationError:
-        return RedirectResponse("/?" + urlencode({"login_error": "Неполные данные от Telegram"}), 303)
+        return RedirectResponse("/?" + urlencode({"login_error": t("api.tg_incomplete")}), 303)
     except HTTPException as e:
         return RedirectResponse("/?" + urlencode({"login_error": e.detail}), 303)
     response = RedirectResponse("/", 303)
@@ -148,13 +149,13 @@ async def login_password(data: PasswordAuth, request: Request, response: Respons
     s = get_settings()
     ip = request.client.host if request.client else "?"
     if _throttled(ip):
-        raise HTTPException(429, "Слишком много попыток, подождите минуту")
+        raise HTTPException(429, t("api.too_many"))
     # bytes: compare_digest raises TypeError on non-ASCII str
     if not s.web_password or not secrets.compare_digest(data.password.encode(), s.web_password.encode()):
         _failures.setdefault(ip, []).append(time.monotonic())
-        raise HTTPException(403, "Неверный пароль")
+        raise HTTPException(403, t("api.bad_password"))
     _failures.pop(ip, None)
-    viewer = Viewer(user_id=None, name="Семья", method="password")
+    viewer = Viewer(user_id=None, name=t("api.family_viewer"), method="password")
     _set_cookie(response, viewer, request)
     return {"user_id": None, "name": viewer.name}
 
