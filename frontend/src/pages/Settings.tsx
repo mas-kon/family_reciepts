@@ -38,8 +38,9 @@ function Family() {
     },
     onError: notifyError,
   })
-  const rename = useMutation({
-    mutationFn: (u: { id: number; name: string }) => api(`/users/${u.id}`, { method: 'PATCH', json: { name: u.name } }),
+  const save = useMutation({
+    mutationFn: ({ id, ...fields }: { id: number; name?: string; cards?: string; emails?: string }) =>
+      api(`/users/${id}`, { method: 'PATCH', json: fields }),
     onSuccess: () => {
       setEditing(null)
       refresh()
@@ -60,6 +61,10 @@ function Family() {
         Telegram добавьте вручную. Тогда в группе можно записать трату на него: <Code>+ Маша: кино 12</Code>.
         Имя в боте пишется так же, как здесь, достаточно первого слова.
       </Text>
+      <Text size="sm" c="dimmed">
+        <b>Карты</b>: последние 4 цифры через запятую. Уведомление банка и строка выписки с этой картой запишутся на
+        этого человека. <b>Почта</b>: адреса, с которых человек пересылает электронные чеки.
+      </Text>
       <Group align="flex-end">
         <TextInput
           label="Новый член семьи"
@@ -73,7 +78,16 @@ function Family() {
           Добавить
         </Button>
       </Group>
-      <Table maw={520}>
+      <Table maw={900}>
+        <Table.Thead>
+          <Table.Tr>
+            <Table.Th>Имя</Table.Th>
+            <Table.Th>Telegram</Table.Th>
+            <Table.Th>Карты</Table.Th>
+            <Table.Th>Почта</Table.Th>
+            <Table.Th />
+          </Table.Tr>
+        </Table.Thead>
         <Table.Tbody>
           {users.data?.map((u) => (
             <Table.Tr key={u.id}>
@@ -83,15 +97,35 @@ function Family() {
                     size="xs"
                     value={editing.name}
                     onChange={(e) => setEditing({ ...editing, name: e.currentTarget.value })}
-                    onKeyDown={(e) => e.key === 'Enter' && rename.mutate(editing)}
-                    onBlur={() => rename.mutate(editing)}
+                    onKeyDown={(e) => e.key === 'Enter' && save.mutate(editing)}
+                    onBlur={() => save.mutate(editing)}
                     autoFocus
                   />
                 ) : (
                   u.name
                 )}
               </Table.Td>
-              <Table.Td c="dimmed">{u.has_telegram ? (u.username ? `@${u.username}` : 'Telegram') : 'без Telegram'}</Table.Td>
+              <Table.Td c="dimmed">{u.has_telegram ? (u.username ? `@${u.username}` : 'есть') : 'нет'}</Table.Td>
+              <Table.Td>
+                <TextInput
+                  size="xs"
+                  w={130}
+                  placeholder="1234, 5678"
+                  defaultValue={u.cards}
+                  aria-label="Карты"
+                  onBlur={(e) => e.currentTarget.value !== u.cards && save.mutate({ id: u.id, cards: e.currentTarget.value })}
+                />
+              </Table.Td>
+              <Table.Td>
+                <TextInput
+                  size="xs"
+                  w={220}
+                  placeholder="name@example.com"
+                  defaultValue={u.emails}
+                  aria-label="Почта"
+                  onBlur={(e) => e.currentTarget.value !== u.emails && save.mutate({ id: u.id, emails: e.currentTarget.value })}
+                />
+              </Table.Td>
               <Table.Td w={90}>
                 <Group gap={2} wrap="nowrap">
                   <ActionIcon variant="subtle" size="sm" aria-label="Переименовать" onClick={() => setEditing({ id: u.id, name: u.name })}>
@@ -419,14 +453,50 @@ function Other() {
         <Text size="sm" mb={4}>
           Провайдер: <Code>{meta.data?.llm_base_url}</Code>
         </Text>
-        <Text size="sm">Модели по порядку, следующая используется при отказе предыдущей:</Text>
-        <Stack gap={2} mt={4}>
-          {meta.data?.models.map((m) => (
-            <Code key={m}>{m}</Code>
-          ))}
-        </Stack>
+        <Text size="sm" mb="xs">
+          В каждом списке модели идут по порядку: следующая используется, если предыдущая не ответила.
+        </Text>
+        <Table fz="sm" withRowBorders={false}>
+          <Table.Tbody>
+            {[
+              ['Чеки по фото', 'LLM_MODELS', meta.data?.models],
+              ['Перечитать чек, если суммы не сошлись', 'LLM_STRONG_MODELS', meta.data?.strong_models],
+              ['Текст: траты, банк, отчёт, товары', 'LLM_TEXT_MODELS', meta.data?.text_models],
+              ['Голосовые сообщения', 'LLM_AUDIO_MODELS', meta.data?.audio_models],
+              ['Вопросы', 'LLM_ASK_MODELS', meta.data?.ask_models],
+            ].map(([label, env, list]) => (
+              <Table.Tr key={env as string}>
+                <Table.Td valign="top" w={260}>
+                  {label as string}
+                  <Text size="xs" c="dimmed">{env as string}</Text>
+                </Table.Td>
+                <Table.Td>
+                  {(list as string[] | undefined)?.length ? (
+                    <Stack gap={2}>
+                      {(list as string[]).map((m) => (
+                        <Code key={m}>{m}</Code>
+                      ))}
+                    </Stack>
+                  ) : (
+                    <Text size="sm" c="dimmed">выключено</Text>
+                  )}
+                </Table.Td>
+              </Table.Tr>
+            ))}
+          </Table.Tbody>
+        </Table>
         <Text size="xs" c="dimmed" mt="sm">
-          Меняется переменной LLM_MODELS в файле .env, затем перезапуск сервиса.
+          Меняется в файле .env, затем перезапуск сервиса.
+        </Text>
+      </Card>
+      <Card withBorder>
+        <Title order={5} mb="xs">
+          Чеки по почте
+        </Title>
+        <Text size="sm">
+          {meta.data?.email_enabled
+            ? `Включено. Пересылайте электронные чеки на ${meta.data.email_address}: бот проверяет ящик и пишет о каждом чеке в группу.`
+            : 'Выключено. Чтобы включить, задайте IMAP_HOST, IMAP_USER и IMAP_PASSWORD в .env.'}
         </Text>
       </Card>
     </Stack>

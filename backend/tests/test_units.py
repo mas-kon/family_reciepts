@@ -65,3 +65,13 @@ def test_web_base_url_gets_scheme():
     assert Settings(web_base_url="chek.example.com/").web_base_url == "https://chek.example.com"
     assert Settings(web_base_url="http://10.0.0.5:8000").web_base_url == "http://10.0.0.5:8000"
     assert Settings(web_base_url="").web_base_url == ""
+
+
+def test_statement_is_not_a_receipt():
+    from app.bank import looks_like_statement
+
+    icard = "Месечно извлечение септември 2026\nIBAN: BG09INTF40012082542347\nНачален баланс 2.43 EUR\nКраен баланс 1.26 EUR"
+    revolut = "Выписка для EUR\nIBAN LT903250089798526389\nСведения о балансе\nНачальный баланс"
+    receipt = "LIDL БЪЛГАРИЯ\nМЛЯКО 1.29\nОБЩА СУМА 12.40 EUR\nКАРТА 12.40"
+    assert looks_like_statement(icard) and looks_like_statement(revolut)
+    assert not looks_like_statement(receipt) and not looks_like_statement("")

@@ -1,6 +1,7 @@
 """Monthly report: a PNG chart plus a short text summary."""
 
 import io
+import logging
 from datetime import date
 
 import matplotlib
@@ -9,7 +10,9 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 from sqlalchemy.ext.asyncio import AsyncSession  # noqa: E402
 
-from app.stats import month_bounds, prev_month, summary  # noqa: E402
+from app.stats import budgets_status, month_bounds, prev_month, summary  # noqa: E402
+
+log = logging.getLogger(__name__)
 
 MONTHS_RU = [
     "январь", "февраль", "март", "апрель", "май", "июнь",
@@ -40,7 +43,42 @@ def render_chart(month: str, by_category: list[dict]) -> bytes:
     return buf.getvalue()
 
 
-async def build_monthly_report(session: AsyncSession, month: str) -> tuple[str, bytes | None]:
+async def month_comment(session: AsyncSession, month: str, cur: dict, prev: dict, llm=None) -> str | None:
+    """2–4 sentences from the LLM about what changed this month. None if the LLM is unavailable."""
+    import html
+    import json
+
+    from app.llm.client import LLMClient, LLMError
+    from app.llm.prompt import COMMENT_SYSTEM
+    from app.config import get_settings
+
+    if not cur["total"]:
+        return None
+    pick = lambda s: {k: s[k] for k in ("total", "receipts", "by_category", "by_subcategory", "by_user", "by_store", "top_items")}  # noqa: E731
+    data = {
+        "month": month_title(month),
+        "this_month": pick(cur),
+        "previous_month": pick(prev),
+        "budgets": await budgets_status(session, month),
+    }
+    llm = llm or LLMClient()
+    try:
+        text, _ = await llm.complete_text(
+            [
+                {"role": "system", "content": COMMENT_SYSTEM},
+                {"role": "user", "content": json.dumps(data, ensure_ascii=False, default=str)},
+            ],
+            get_settings().text_models,
+        )
+    except LLMError as e:
+        log.warning("month comment failed: %s", e)
+        return None
+    return html.escape(text.strip())[:900]
+
+
+async def build_monthly_report(
+    session: AsyncSession, month: str, with_comment: bool = True, llm=None
+) -> tuple[str, bytes | None]:
     start, end = month_bounds(month)
     cur = await summary(session, start, end)
     before = prev_month(start.date())
@@ -52,6 +90,8 @@ async def build_monthly_report(session: AsyncSession, month: str) -> tuple[str, 
         diff = (cur["total"] - prev["total"]) / prev["total"] * 100
         sign = "+" if diff >= 0 else ""
         lines.append(f"К прошлому месяцу: {sign}{diff:.0f}%")
+    if with_comment and (comment := await month_comment(session, month, cur, prev, llm)):
+        lines += ["", f"💬 {comment}"]
     if cur["by_user"]:
         lines.append("")
         lines += [f"👤 {u['name'] or '—'}: {u['amount']:.2f} €" for u in cur["by_user"]]

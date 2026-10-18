@@ -35,10 +35,10 @@ import dayjs from 'dayjs'
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api, type Item, type ReceiptDetail } from '../api'
-import { categoryOptions, dateTime, money, SOURCE_LABEL, STATUS_LABEL } from '../format'
+import { categoryOptions, dateOnly, dateTime, money, SOURCE_LABEL, sourceLabel, STATUS_LABEL } from '../format'
 import { notifyError, notifyOk, useCategories, useMeta, useUsers } from '../hooks'
 
-type ItemDraft = Pick<Item, 'name_original' | 'name_ru' | 'qty' | 'unit_price' | 'total'>
+type ItemDraft = Pick<Item, 'name_original' | 'name_ru' | 'qty' | 'unit_price' | 'total' | 'warranty_until'>
 
 function ItemRow({
   item,
@@ -92,6 +92,11 @@ function ItemRow({
               {item.name_original}
             </Text>
           )}
+          {item.warranty_until && (
+            <Text size="xs" c="teal">
+              🛡 гарантия до {dateOnly(item.warranty_until)}
+            </Text>
+          )}
         </Table.Td>
         <Table.Td className="num">{item.qty}</Table.Td>
         <Table.Td className="num">{item.unit_price !== null ? item.unit_price.toFixed(2) : '—'}</Table.Td>
@@ -119,6 +124,14 @@ function ItemRow({
         <Stack gap={4}>
           <TextInput size="xs" value={d.name_ru ?? ''} placeholder="По-русски" onChange={(e) => setD({ ...d, name_ru: e.currentTarget.value })} />
           <TextInput size="xs" value={d.name_original} placeholder="Как в чеке" onChange={(e) => setD({ ...d, name_original: e.currentTarget.value })} />
+          <TextInput
+            size="xs"
+            type="date"
+            aria-label="Гарантия до"
+            leftSection={<Text size="xs">🛡</Text>}
+            value={d.warranty_until ?? ''}
+            onChange={(e) => setD({ ...d, warranty_until: e.currentTarget.value || null })}
+          />
         </Stack>
       </Table.Td>
       <Table.Td>
@@ -308,9 +321,14 @@ export default function ReceiptDetailPage() {
                     </Text>
                     <Text size="sm">{dateTime(r.purchased_at)}</Text>
                     <Text size="sm" c="dimmed">
-                      {r.user_name ?? 'Кто — не указано'} · {SOURCE_LABEL[r.source]}
+                      {r.user_name ?? 'Кто — не указано'} · {sourceLabel(r)}
                       {r.llm_model && ` · ${r.llm_model}`}
                     </Text>
+                    {r.import_id && (
+                      <Anchor component={Link} to={`/receipts?import_id=${encodeURIComponent(r.import_id)}`} size="sm">
+                        Все записи этой выписки
+                      </Anchor>
+                    )}
                     {r.note && (
                       <Text size="sm" fw={500}>
                         📝 {r.note}

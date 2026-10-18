@@ -1,10 +1,11 @@
 import asyncio
+import calendar
 import io
 import logging
 import re
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 
 from PIL import Image, ImageOps
@@ -73,10 +74,49 @@ def split_who(text: str) -> tuple[str | None, str]:
     return m["who"], m["rest"].strip()
 
 
+def add_months(d: date, months: int) -> date:
+    y, m = divmod(d.month - 1 + months, 12)
+    year, month = d.year + y, m + 1
+    return date(year, month, min(d.day, calendar.monthrange(year, month)[1]))
+
+
+def pdf_text_and_preview(data: bytes, max_pages: int = 3) -> tuple[str, bytes]:
+    """Text layer of the first pages and a JPEG of the first page."""
+    import pypdfium2 as pdfium
+    from pypdf import PdfReader
+
+    try:
+        reader = PdfReader(io.BytesIO(data))
+        text = "\n".join((p.extract_text() or "") for p in reader.pages[:max_pages])
+    except Exception:
+        text = ""
+    pdf = pdfium.PdfDocument(data)
+    page = pdf[0].render(scale=2.5).to_pil().convert("RGB")
+    buf = io.BytesIO()
+    page.save(buf, format="JPEG", quality=90)
+    return text, buf.getvalue()
+
+
+async def find_user(session: AsyncSession, token: str) -> User | None:
+    """Family member by @username or by name (full or first word), case-insensitive."""
+    users = list(await session.scalars(select(User)))
+    t = token.strip()
+    if t.startswith("@"):
+        uname = t[1:].lower()
+        return next((u for u in users if (u.username or "").lower() == uname), None)
+    key = normalize_name(t)
+    for u in users:
+        full = normalize_name(u.name)
+        if key == full or key == full.split(" ")[0]:
+            return u
+    return None
+
+
 class ReceiptService:
-    def __init__(self, session: AsyncSession, llm: LLMClient | None = None):
+    def __init__(self, session: AsyncSession, llm: LLMClient | None = None, auto_products: bool = True):
         self.session = session
         self.llm = llm or LLMClient()
+        self.auto_products = auto_products
         self.settings = get_settings()
 
     # ---------- helpers ----------
@@ -94,18 +134,7 @@ class ReceiptService:
         return user
 
     async def find_user(self, token: str) -> User | None:
-        """Family member by @username or by name (full or first word), case-insensitive."""
-        users = list(await self.session.scalars(select(User)))
-        t = token.strip()
-        if t.startswith("@"):
-            uname = t[1:].lower()
-            return next((u for u in users if (u.username or "").lower() == uname), None)
-        key = normalize_name(t)
-        for u in users:
-            full = normalize_name(u.name)
-            if key == full or key == full.split(" ")[0]:
-                return u
-        return None
+        return await find_user(self.session, token)
 
     async def matcher(self) -> CategoryMatcher:
         cats = list(await self.session.scalars(select(Category)))
@@ -149,7 +178,11 @@ class ReceiptService:
         message_id: int | None = None,
         ext: str = "jpg",
         note: str | None = None,
+        source: str = "photo",
+        external_id: str | None = None,
     ) -> ProcessResult:
+        if dup := await self._duplicate_external(external_id):
+            return ProcessResult(duplicate_of=dup)
         image = ImageOps.exif_transpose(Image.open(io.BytesIO(data)))
         image.load()
         qr, qr_raw, rotation = await asyncio.to_thread(find_fiscal_qr, image)
@@ -168,7 +201,8 @@ class ReceiptService:
                 return ProcessResult(duplicate_of=dup)
 
         receipt = Receipt(
-            source="photo",
+            source=source,
+            external_id=external_id,
             status="pending",
             user_id=user.id if user else None,
             image_path=self._save_image(data, ext),
@@ -187,7 +221,71 @@ class ReceiptService:
         result = await self.recognize(receipt, image, qr)
         return result
 
+    async def _duplicate_external(self, external_id: str | None) -> Receipt | None:
+        if not external_id:
+            return None
+        return await self.session.scalar(select(Receipt).where(Receipt.external_id == external_id))
+
+    async def process_text_receipt(
+        self,
+        text: str,
+        user: User | None,
+        *,
+        source: str = "email",
+        external_id: str | None = None,
+        note: str | None = None,
+        image_data: bytes | None = None,
+        chat_id: int | None = None,
+        message_id: int | None = None,
+    ) -> ProcessResult:
+        """An electronic receipt as text (e-mail body, PDF with a text layer)."""
+        if dup := await self._duplicate_external(external_id):
+            return ProcessResult(duplicate_of=dup)
+        receipt = Receipt(
+            source=source,
+            external_id=external_id,
+            status="pending",
+            user_id=user.id if user else None,
+            image_path=self._save_image(image_data, "jpg") if image_data else None,
+            source_text=text[:50000],
+            note=note or None,
+            chat_id=chat_id,
+            message_id=message_id,
+            items=[],
+        )
+        self.session.add(receipt)
+        await self.session.commit()
+        return await self.recognize(receipt, None, None, text=text)
+
+    async def process_pdf(
+        self,
+        data: bytes,
+        user: User | None,
+        *,
+        source: str = "photo",
+        external_id: str | None = None,
+        note: str | None = None,
+        chat_id: int | None = None,
+        message_id: int | None = None,
+    ) -> ProcessResult:
+        """PDF receipt: its text layer is read when present, otherwise the rendered first page.
+        The first page is kept as the receipt picture either way."""
+        text, preview = await asyncio.to_thread(pdf_text_and_preview, data)
+        if len(text.strip()) > 30:
+            return await self.process_text_receipt(
+                text, user, source=source, external_id=external_id, note=note,
+                image_data=preview, chat_id=chat_id, message_id=message_id,
+            )
+        return await self.process_photo(
+            preview, user, chat_id=chat_id, message_id=message_id, note=note,
+            source=source, external_id=external_id,
+        )
+
     async def reprocess(self, receipt: Receipt, models: list[str] | None = None) -> ProcessResult:
+        if receipt.source_text:
+            return await self.recognize(
+                receipt, None, None, models=models, keep_if_not_receipt=True, text=receipt.source_text
+            )
         path = self.image_abspath(receipt)
         if not path or not path.exists():
             return ProcessResult(receipt=receipt, error="У записи нет фото чека")
@@ -199,16 +297,24 @@ class ReceiptService:
     async def recognize(
         self,
         receipt: Receipt,
-        image: Image.Image,
+        image: Image.Image | None,
         qr: FiscalQR | None,
         models: list[str] | None = None,
         keep_if_not_receipt: bool = False,
+        text: str | None = None,
     ) -> ProcessResult:
+        """Reads the receipt from a photo (image) or from e-mail text (text) and fills it in.
+        If the sums do not add up, the receipt is re-read once by LLM_STRONG_MODELS."""
         matcher = await self.matcher()
+        system = receipt_system(matcher.path_list())
+
+        async def read(ms: list[str] | None):
+            if text is not None:
+                return await self.llm.parse_receipt_text(text, system, hint=receipt.note, models=ms)
+            return await self.llm.parse_receipt(image, system, ms, hint=receipt.note)
+
         try:
-            res = await self.llm.parse_receipt(
-                image, receipt_system(matcher.path_list()), models, hint=receipt.note
-            )
+            res = await read(models)
         except LLMError as e:
             receipt.status = "failed"
             receipt.review_reason = f"Нейросеть не ответила: {e}"[:2000]
@@ -219,7 +325,7 @@ class ReceiptService:
         if not parsed.is_receipt and not qr:
             if keep_if_not_receipt:
                 receipt.status = "needs_review"
-                receipt.review_reason = "Нейросеть не распознала чек на фото"
+                receipt.review_reason = "Нейросеть не распознала чек"
                 await self.session.commit()
                 return ProcessResult(receipt=receipt, not_receipt=True)
             await self.delete_receipt(receipt)
@@ -228,8 +334,32 @@ class ReceiptService:
         receipt.llm_model = res.model
         receipt.raw_llm_json = res.raw
         await self.apply_parsed(receipt, parsed, matcher, qr)
+
+        strong = [m for m in self.settings.strong_models if m != res.model]
+        if receipt.status == "needs_review" and models is None and strong:
+            try:
+                res2 = await read(strong)
+            except LLMError as e:
+                log.warning("strong models failed: %s", e)
+            else:
+                if res2.data.is_receipt or qr:
+                    receipt.llm_model = res2.model
+                    receipt.raw_llm_json = res2.raw
+                    await self.apply_parsed(receipt, res2.data, matcher, qr)
+                    if receipt.review_reason:
+                        receipt.review_reason += f"\n(перечитано моделью {res2.model})"
+
         await self.session.commit()
+        self.after_items_changed(receipt)
         return ProcessResult(receipt=receipt)
+
+    def after_items_changed(self, receipt: Receipt) -> None:
+        """Groups new product names in the background, so the bot answers without waiting."""
+        if not self.auto_products:
+            return
+        from app.products import schedule_grouping
+
+        schedule_grouping([i.name_normalized for i in receipt.items if i.total > 0], self.llm)
 
     async def apply_parsed(
         self,
@@ -279,6 +409,9 @@ class ReceiptService:
                     unit_price=round2(unit),
                     total=round2(pi.total),
                     category_id=cat_id,
+                    warranty_until=add_months(receipt.purchased_at.date(), pi.warranty_months)
+                    if pi.warranty_months
+                    else None,
                 )
             )
 
@@ -328,9 +461,13 @@ class ReceiptService:
         note: str | None = None,
         chat_id: int | None = None,
         message_id: int | None = None,
+        external_id: str | None = None,
+        import_id: str | None = None,
     ) -> Receipt:
         receipt = Receipt(
             source=source,
+            external_id=external_id,
+            import_id=import_id,
             status="ok",
             user_id=user_id,
             store=store,

@@ -23,15 +23,53 @@ async def meta():
     return {
         "models": s.models,
         "llm_base_url": s.llm_base_url,
+        "text_models": s.text_models,
+        "strong_models": s.strong_models,
+        "audio_models": s.audio_models,
+        "ask_models": s.ask_models,
+        "email_enabled": bool(s.imap_host),
+        "email_address": s.imap_user if s.imap_host else None,
+        "warranty_remind_days": s.warranty_remind_days,
     }
 
 
 def user_out(u: User) -> dict:
-    return {"id": u.id, "name": u.name, "username": u.username, "has_telegram": u.telegram_id is not None}
+    return {
+        "id": u.id,
+        "name": u.name,
+        "username": u.username,
+        "has_telegram": u.telegram_id is not None,
+        "cards": u.cards or "",
+        "emails": u.emails or "",
+    }
+
+
+def _clean_list(value: str | None, digits: bool) -> str | None:
+    """'1234, *5678' -> '1234,5678'; e-mails are lower-cased."""
+    parts = []
+    for p in (value or "").replace(";", ",").split(","):
+        p = p.strip()
+        if digits:
+            p = "".join(ch for ch in p if ch.isdigit())[-4:]
+            if len(p) < 4:
+                continue
+        else:
+            p = p.lower()
+            if "@" not in p:
+                continue
+        parts.append(p)
+    return ",".join(dict.fromkeys(parts)) or None
 
 
 class UserIn(BaseModel):
     name: str = Field(min_length=1, max_length=200)
+
+
+class UserPatch(BaseModel):
+    name: str | None = Field(None, min_length=1, max_length=200)
+    # last 4 digits of bank cards, comma-separated
+    cards: str | None = None
+    emails: str | None = None
 
 
 @router.get("/users")
@@ -50,11 +88,17 @@ async def create_user(data: UserIn, session: AsyncSession = Depends(get_session)
 
 
 @router.patch("/users/{uid}")
-async def rename_user(uid: int, data: UserIn, session: AsyncSession = Depends(get_session)):
+async def update_user(uid: int, data: UserPatch, session: AsyncSession = Depends(get_session)):
     u = await session.get(User, uid)
     if not u:
         raise HTTPException(404, "Член семьи не найден")
-    u.name = data.name.strip()
+    fields = data.model_dump(exclude_unset=True)
+    if fields.get("name"):
+        u.name = fields["name"].strip()
+    if "cards" in fields:
+        u.cards = _clean_list(fields["cards"], digits=True)
+    if "emails" in fields:
+        u.emails = _clean_list(fields["emails"], digits=False)
     await session.commit()
     return user_out(u)
 

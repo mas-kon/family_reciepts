@@ -32,7 +32,14 @@ export const SOURCE_LABEL: Record<string, string> = {
   photo: 'Чек',
   manual: 'Вручную',
   recurring: 'Регулярный',
+  bank: 'Банк',
+  voice: 'Голос',
+  email: 'Почта',
 }
+
+/** "Выписка" for records booked from a bank statement, otherwise the source name. */
+export const sourceLabel = (r: { source: string; import_id?: string | null }) =>
+  r.import_id ? 'Выписка' : SOURCE_LABEL[r.source]
 
 /** Options for a category Select, grouped by parent. */
 export function categoryOptions(cats: Category[], leavesOnly = false) {

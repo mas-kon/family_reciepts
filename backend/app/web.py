@@ -3,7 +3,7 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 
-from app.api import auth, receipts, settings, stats
+from app.api import ai, auth, receipts, settings, stats
 from app.config import PROJECT_ROOT
 
 FRONTEND_DIST = PROJECT_ROOT / "frontend" / "dist"
@@ -14,7 +14,7 @@ def create_app() -> FastAPI:
     app.state.bot = None
     app.state.bot_username = None
 
-    for r in (auth.router, receipts.router, stats.router, settings.router):
+    for r in (auth.router, receipts.router, stats.router, settings.router, ai.router):
         app.include_router(r)
 
     @app.get("/api/health")

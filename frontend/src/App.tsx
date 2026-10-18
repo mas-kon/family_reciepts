@@ -12,23 +12,29 @@ import {
 } from '@mantine/core'
 import { useDisclosure } from '@mantine/hooks'
 import {
+  IconBuildingBank,
   IconChartBar,
   IconLogout,
+  IconMessageQuestion,
   IconMoon,
   IconReceipt,
   IconSettings,
+  IconShieldCheck,
   IconSun,
   IconTrendingUp,
 } from '@tabler/icons-react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { api, ApiError } from './api'
+import Ask from './pages/Ask'
+import BankImport from './pages/BankImport'
 import Dashboard from './pages/Dashboard'
 import Login from './pages/Login'
 import Products from './pages/Products'
 import ReceiptDetailPage from './pages/ReceiptDetail'
 import Receipts from './pages/Receipts'
 import Settings from './pages/Settings'
+import Warranties from './pages/Warranties'
 
 interface Me {
   user_id: number | null
@@ -40,6 +46,9 @@ const NAV = [
   { to: '/', label: 'Статистика', icon: IconChartBar },
   { to: '/receipts', label: 'Чеки', icon: IconReceipt },
   { to: '/products', label: 'Цены', icon: IconTrendingUp },
+  { to: '/ask', label: 'Вопросы', icon: IconMessageQuestion },
+  { to: '/bank', label: 'Выписка', icon: IconBuildingBank },
+  { to: '/warranties', label: 'Гарантии', icon: IconShieldCheck },
   { to: '/settings', label: 'Настройки', icon: IconSettings },
 ]
 
@@ -123,6 +132,9 @@ export default function App() {
           <Route path="/receipts" element={<Receipts />} />
           <Route path="/receipts/:id" element={<ReceiptDetailPage />} />
           <Route path="/products" element={<Products />} />
+          <Route path="/ask" element={<Ask />} />
+          <Route path="/bank" element={<BankImport />} />
+          <Route path="/warranties" element={<Warranties />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

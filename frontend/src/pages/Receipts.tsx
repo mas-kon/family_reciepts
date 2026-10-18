@@ -1,4 +1,5 @@
 import {
+  Alert,
   Badge,
   Button,
   Group,
@@ -17,7 +18,8 @@ import { useQuery } from '@tanstack/react-query'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { api, qs, type Receipt } from '../api'
 import { ManualExpenseModal } from '../components/ManualExpenseModal'
-import { categoryOptions, dateTime, money, SOURCE_LABEL, STATUS_LABEL } from '../format'
+import { DeleteImportButton } from '../components/DeleteImportButton'
+import { categoryOptions, dateTime, money, SOURCE_LABEL, sourceLabel, STATUS_LABEL } from '../format'
 import { useCategories, useUsers } from '../hooks'
 
 const PAGE = 50
@@ -48,6 +50,7 @@ export default function Receipts() {
     category_id: get('category_id'),
     date_from: get('date_from'),
     date_to: get('date_to'),
+    import_id: get('import_id'),
     page,
     page_size: PAGE,
   }
@@ -120,6 +123,27 @@ export default function Receipts() {
         />
       </Group>
 
+      {params.import_id && (
+        <Alert color="blue" title="Записи одной выписки">
+          <Group justify="space-between">
+            <Text size="sm">
+              Показаны только траты, добавленные из одной банковской выписки
+              {list.data ? `: ${list.data.total}` : ''}.
+            </Text>
+            <Group gap="xs">
+              <Button size="xs" variant="subtle" onClick={() => set('import_id', null)}>
+                Показать все записи
+              </Button>
+              <DeleteImportButton
+                importId={params.import_id}
+                count={list.data?.total}
+                onDone={() => set('import_id', null)}
+              />
+            </Group>
+          </Group>
+        </Alert>
+      )}
+
       {list.isLoading ? (
         <Loader />
       ) : (
@@ -146,7 +170,7 @@ export default function Receipts() {
                         <Text size="sm">{r.title}</Text>
                         {r.source !== 'photo' && (
                           <Badge size="xs" variant="light" color="gray">
-                            {SOURCE_LABEL[r.source]}
+                            {sourceLabel(r)}
                           </Badge>
                         )}
                       </Group>

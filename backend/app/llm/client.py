@@ -123,3 +123,91 @@ class LLMClient:
             {"role": "user", "content": text},
         ]
         return await self.structured(messages, ParsedManual, self.settings.text_models)
+
+    # ---------- free text ----------
+
+    async def complete_text(self, messages: list[dict], models: list[str]) -> tuple[str, str]:
+        """Plain text answer and the model that gave it."""
+        errors: list[str] = []
+        for model in models:
+            try:
+                text = (await self._ask(model, messages)).strip()
+                if text:
+                    return text, model
+                errors.append(f"{model}: empty answer")
+            except Exception as e:
+                log.warning("model %s failed: %s", model, e)
+                errors.append(f"{model}: {type(e).__name__}: {str(e)[:200]}")
+        raise LLMError("; ".join(errors) or "no models configured")
+
+    # ---------- receipts as text (e-mail) ----------
+
+    async def parse_receipt_text(
+        self, text: str, system: str, hint: str | None = None, models: list[str] | None = None
+    ):
+        from app.llm.prompt import RECEIPT_TEXT_USER
+        from app.llm.schema import ParsedReceipt
+
+        user = RECEIPT_TEXT_USER + (f"Подпись пользователя: {hint}\n\n" if hint else "") + text[:30000]
+        messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
+        return await self.structured(messages, ParsedReceipt, models or self.settings.text_models)
+
+    # ---------- bank ----------
+
+    async def parse_bank(self, text: str):
+        from app.llm.prompt import BANK_SYSTEM
+        from app.llm.schema import ParsedBank
+
+        messages = [{"role": "system", "content": BANK_SYSTEM}, {"role": "user", "content": text[:60000]}]
+        return await self.structured(messages, ParsedBank, self.settings.text_models)
+
+    # ---------- voice ----------
+
+    async def parse_voice(self, wav: bytes, system: str):
+        from app.llm.schema import ParsedVoice
+
+        models = self.settings.audio_models
+        if not models:
+            raise LLMError("LLM_AUDIO_MODELS is empty")
+        messages = [
+            {"role": "system", "content": system},
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "Запиши трату из этого голосового сообщения."},
+                    {"type": "input_audio", "input_audio": {"data": base64.b64encode(wav).decode(), "format": "wav"}},
+                ],
+            },
+        ]
+        return await self.structured(messages, ParsedVoice, models)
+
+    # ---------- products ----------
+
+    async def group_products(self, names: list[str], known: list[str]):
+        from app.llm.prompt import PRODUCTS_SYSTEM
+        from app.llm.schema import ParsedProducts
+
+        user = (
+            "Известные товары:\n" + ("\n".join(f"- {k}" for k in known) or "(пока нет)")
+            + "\n\nНовые названия из чеков:\n" + "\n".join(f"- {n}" for n in names)
+        )
+        messages = [{"role": "system", "content": PRODUCTS_SYSTEM}, {"role": "user", "content": user}]
+        return await self.structured(messages, ParsedProducts, self.settings.text_models)
+
+    # ---------- tool calling (questions in the web UI) ----------
+
+    async def chat_tools(self, messages: list[dict], tools: list[dict], models: list[str]):
+        """One step of a tool-calling conversation: returns (assistant message, model)."""
+        errors: list[str] = []
+        for model in models:
+            try:
+                resp = await self.client.chat.completions.create(
+                    model=model, messages=messages, tools=tools, temperature=0
+                )
+                if resp.choices:
+                    return resp.choices[0].message, model
+                errors.append(f"{model}: no choices")
+            except Exception as e:
+                log.warning("model %s failed: %s", model, e)
+                errors.append(f"{model}: {type(e).__name__}: {str(e)[:200]}")
+        raise LLMError("; ".join(errors) or "no models configured")

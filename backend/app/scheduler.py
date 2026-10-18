@@ -29,10 +29,12 @@ async def send_monthly_report(bot: Bot | None, month: str | None = None) -> None
     month = month or last_month()
     async with session_factory()() as session:
         text, chart = await build_monthly_report(session, month)
-    if chart:
-        await bot.send_photo(chat, BufferedInputFile(chart, f"report-{month}.png"), caption=text[:1024])
-        if len(text) > 1024:
-            await bot.send_message(chat, text)
+    if chart and len(text) <= 1024:
+        await bot.send_photo(chat, BufferedInputFile(chart, f"report-{month}.png"), caption=text)
+    elif chart:
+        # a long report (with the comment) does not fit into a photo caption
+        await bot.send_photo(chat, BufferedInputFile(chart, f"report-{month}.png"))
+        await bot.send_message(chat, text)
     else:
         await bot.send_message(chat, text + "\n\nТрат за месяц нет.")
 
@@ -79,4 +81,17 @@ def create_scheduler(bot: Bot | None) -> AsyncIOScheduler:
     sched.add_job(book_recurring, CronTrigger(hour=8, minute=0, timezone=tz), args=[bot])
     # catch up on missed recurring payments right after start
     sched.add_job(book_recurring, args=[bot], next_run_time=datetime.now(ZoneInfo(tz)))
+
+    from app.warranty import remind
+
+    sched.add_job(remind, CronTrigger(hour=10, minute=0, timezone=tz), args=[bot])
+
+    s = get_settings()
+    if s.imap_host:
+        from app.email_inbox import poll_inbox
+
+        sched.add_job(
+            poll_inbox, "interval", minutes=max(1, s.imap_poll_minutes), args=[bot],
+            next_run_time=datetime.now(ZoneInfo(tz)), max_instances=1, coalesce=True,
+        )
     return sched

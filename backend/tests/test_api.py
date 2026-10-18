@@ -46,7 +46,7 @@ async def test_receipt_flow(client, session):
 
     products = (await client.get("/api/products")).json()
     assert products[0]["count"] == 2
-    prices = (await client.get("/api/products/prices", params={"name": products[0]["name_normalized"]})).json()
+    prices = (await client.get("/api/products/prices", params={"key": products[0]["key"]})).json()
     assert len(prices) == 2
 
     csv = await client.get("/api/export.csv")

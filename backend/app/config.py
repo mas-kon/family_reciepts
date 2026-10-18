@@ -31,8 +31,15 @@ class Settings(BaseSettings):
         "google/gemma-4-31b-it:free,"
         "google/gemma-4-26b-a4b-it:free"
     )
-    # Model for short text tasks (manual entries). Empty = use llm_models.
+    # Model for short text tasks (manual entries, bank messages, comments). Empty = use llm_models.
     llm_text_models: str = ""
+    # Cascade: a receipt whose sums do not add up is re-read by these (stronger) models.
+    # Empty = no second reading.
+    llm_strong_models: str = ""
+    # Models that understand audio, for voice messages. Empty = voice messages are ignored.
+    llm_audio_models: str = ""
+    # Models for questions in the web UI; they must support tool calling. Empty = text models.
+    llm_ask_models: str = ""
     llm_timeout: float = 120.0
     llm_max_image_side: int = 2000
 
@@ -50,6 +57,18 @@ class Settings(BaseSettings):
     web_password: str = ""
     # Skip auth entirely. Local development only!
     auth_disabled: bool = False
+
+    # --- Receipts by e-mail (IMAP). Empty host = disabled. ---
+    imap_host: str = ""
+    imap_port: int = 993
+    imap_user: str = ""
+    imap_password: str = ""
+    imap_folder: str = "INBOX"
+    imap_poll_minutes: int = 10
+
+    # --- Warranty ---
+    # remind in the group this many days before a warranty ends
+    warranty_remind_days: int = 30
 
     # --- Money / time ---
     timezone: str = "Europe/Sofia"
@@ -79,10 +98,25 @@ class Settings(BaseSettings):
     def models(self) -> list[str]:
         return [m.strip() for m in self.llm_models.split(",") if m.strip()]
 
+    @staticmethod
+    def _split(value: str) -> list[str]:
+        return [m.strip() for m in value.split(",") if m.strip()]
+
     @property
     def text_models(self) -> list[str]:
-        own = [m.strip() for m in self.llm_text_models.split(",") if m.strip()]
-        return own or self.models
+        return self._split(self.llm_text_models) or self.models
+
+    @property
+    def strong_models(self) -> list[str]:
+        return self._split(self.llm_strong_models)
+
+    @property
+    def audio_models(self) -> list[str]:
+        return self._split(self.llm_audio_models)
+
+    @property
+    def ask_models(self) -> list[str]:
+        return self._split(self.llm_ask_models) or self.text_models
 
     @property
     def receipts_dir(self) -> Path:

@@ -32,6 +32,7 @@ class ItemOut(BaseModel):
     unit_price: float | None
     total: float
     category_id: int | None
+    warranty_until: date | None
 
 
 class ReceiptOut(BaseModel):
@@ -48,6 +49,7 @@ class ReceiptOut(BaseModel):
     items_count: int
     has_image: bool
     note: str | None
+    import_id: str | None
     created_at: datetime
 
 
@@ -83,6 +85,7 @@ class ItemPatch(BaseModel):
     unit_price: float | None = None
     total: float | None = None
     category_id: int | None = None
+    warranty_until: date | None = None
     # remember the category for this product and apply it to the same product everywhere
     remember: bool = True
 
@@ -121,6 +124,7 @@ def to_out(r: Receipt) -> dict:
         items_count=len(r.items),
         has_image=bool(r.image_path),
         note=r.note,
+        import_id=r.import_id,
         created_at=r.created_at,
     )
 
@@ -164,6 +168,8 @@ async def list_receipts(
     source: str | None = None,
     # a category id, or "none" for records without a category
     category_id: str | None = None,
+    # records of one bank statement import
+    import_id: str | None = None,
     q: str | None = None,
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=500),
@@ -181,6 +187,8 @@ async def list_receipts(
         conds.append(Receipt.status == status)
     if source:
         conds.append(Receipt.source == source)
+    if import_id:
+        conds.append(Receipt.import_id == import_id)
     if category_id == "none":
         conds.append(Receipt.items.any(Item.category_id.is_(None)))
     elif category_id:
@@ -311,6 +319,8 @@ async def patch_item(item_id: int, data: ItemPatch, session: AsyncSession = Depe
         setattr(item, k, v)
     if "name_original" in fields:
         item.name_normalized = normalize_name(item.name_original)
+    if "warranty_until" in fields:
+        item.warranty_notified = False
     if category_changed and item.category_id and data.remember:
         await ReceiptService(session).remember_category(
             item.name_normalized, item.category_id, apply_existing=True

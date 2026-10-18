@@ -1,9 +1,10 @@
-from datetime import datetime
+from datetime import date, datetime
 
 from sqlalchemy import (
     JSON,
     BigInteger,
     Boolean,
+    Date,
     DateTime,
     Float,
     ForeignKey,
@@ -28,6 +29,10 @@ class User(Base):
     telegram_id: Mapped[int | None] = mapped_column(BigInteger, unique=True)
     name: Mapped[str] = mapped_column(String(200))
     username: Mapped[str | None] = mapped_column(String(100))
+    # last 4 digits of this person's bank cards, comma-separated: bank messages are booked for them
+    cards: Mapped[str | None] = mapped_column(String(200))
+    # e-mail addresses, comma-separated: receipts sent from them are booked for this person
+    emails: Mapped[str | None] = mapped_column(String(300))
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
 
@@ -48,7 +53,7 @@ class Receipt(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
-    # photo | manual | recurring
+    # photo | manual | recurring | bank | voice | email
     source: Mapped[str] = mapped_column(String(20), default="photo")
     store: Mapped[str | None] = mapped_column(String(200))
     purchased_at: Mapped[datetime | None] = mapped_column(DateTime, index=True)
@@ -56,11 +61,17 @@ class Receipt(Base):
     image_path: Mapped[str | None] = mapped_column(String(300))
     qr_raw: Mapped[str | None] = mapped_column(String(300))
     fiscal_key: Mapped[str | None] = mapped_column(String(100), unique=True)
+    # id from outside (e-mail Message-ID, bank transaction hash) to avoid booking twice
+    external_id: Mapped[str | None] = mapped_column(String(300), unique=True)
+    # records booked from one bank statement share it, so the whole import can be deleted at once
+    import_id: Mapped[str | None] = mapped_column(String(40), index=True)
     # pending | ok | needs_review | failed
     status: Mapped[str] = mapped_column(String(20), default="pending", index=True)
     review_reason: Mapped[str | None] = mapped_column(Text)
     llm_model: Mapped[str | None] = mapped_column(String(200))
     raw_llm_json: Mapped[dict | None] = mapped_column(JSON)
+    # text of an electronic receipt (e-mail, PDF), kept so it can be re-read by another model
+    source_text: Mapped[str | None] = mapped_column(Text)
     note: Mapped[str | None] = mapped_column(Text)
     chat_id: Mapped[int | None] = mapped_column(BigInteger)
     message_id: Mapped[int | None] = mapped_column(Integer)
@@ -92,6 +103,8 @@ class Item(Base):
     category_id: Mapped[int | None] = mapped_column(
         ForeignKey("categories.id", ondelete="SET NULL"), index=True
     )
+    warranty_until: Mapped[date | None] = mapped_column(Date, index=True)
+    warranty_notified: Mapped[bool] = mapped_column(Boolean, default=False)
 
     receipt: Mapped[Receipt] = relationship(back_populates="items")
     category: Mapped[Category | None] = relationship(lazy="joined")
@@ -108,6 +121,19 @@ class CategoryOverride(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), onupdate=func.now()
     )
+
+
+class ProductAlias(Base):
+    """Groups differently named lines of the same product ("ПРЯСНО МЛЯКО 3% 1Л", "Мляко 3% 1л")
+    under one canonical name, for price tracking."""
+
+    __tablename__ = "product_aliases"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name_normalized: Mapped[str] = mapped_column(String(300), unique=True)
+    product: Mapped[str] = mapped_column(String(300), index=True)
+    # manual merges are never overwritten by the automatic grouping
+    manual: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
 class Budget(Base):

@@ -6,9 +6,11 @@ from sqlalchemy import Select, and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
-from app.db.models import Budget, BudgetAlert, Category, Item, Receipt, User
+from app.db.models import Budget, BudgetAlert, Category, Item, ProductAlias, Receipt, User
 
 EUR = Item.total
+# product key: canonical product if grouped (app.products), otherwise the line's own name
+PRODUCT_KEY = func.coalesce(ProductAlias.product, Item.name_normalized)
 
 
 def month_bounds(month: str) -> tuple[datetime, datetime]:
@@ -128,17 +130,20 @@ async def summary(
     top_items = await session.execute(
         _filtered(
             select(
-                Item.name_normalized,
-                func.max(Item.name_ru).label("name_ru"),
+                PRODUCT_KEY.label("name_normalized"),
+                func.coalesce(func.max(ProductAlias.product), func.max(Item.name_ru)).label("name_ru"),
                 func.sum(EUR).label("amount"),
                 func.count(Item.id).label("count"),
-            ).select_from(Item).join(Receipt, Item.receipt_id == Receipt.id),
+            )
+            .select_from(Item)
+            .join(Receipt, Item.receipt_id == Receipt.id)
+            .outerjoin(ProductAlias, ProductAlias.name_normalized == Item.name_normalized),
             date_from,
             date_to,
             user_id,
         )
         .where(Item.total > 0)
-        .group_by(Item.name_normalized)
+        .group_by(PRODUCT_KEY)
         .order_by(func.sum(EUR).desc())
         .limit(top)
     )

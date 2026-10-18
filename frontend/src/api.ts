@@ -53,6 +53,8 @@ export interface User {
   name: string
   username: string | null
   has_telegram: boolean
+  cards: string
+  emails: string
 }
 
 export interface Item {
@@ -65,6 +67,7 @@ export interface Item {
   unit_price: number | null
   total: number
   category_id: number | null
+  warranty_until: string | null
 }
 
 export type ReceiptStatus = 'ok' | 'needs_review' | 'pending' | 'failed'
@@ -72,7 +75,7 @@ export type ReceiptStatus = 'ok' | 'needs_review' | 'pending' | 'failed'
 export interface Receipt {
   id: number
   title: string
-  source: 'photo' | 'manual' | 'recurring'
+  source: 'photo' | 'manual' | 'recurring' | 'bank' | 'voice' | 'email'
   store: string | null
   purchased_at: string | null
   total: number | null
@@ -83,6 +86,8 @@ export interface Receipt {
   items_count: number
   has_image: boolean
   note: string | null
+  /** records booked from one bank statement share it */
+  import_id: string | null
   created_at: string
 }
 
@@ -129,16 +134,6 @@ export interface Recurring {
   last_booked_month: string | null
 }
 
-export interface Product {
-  name_normalized: string
-  name_ru: string | null
-  name_original: string
-  count: number
-  min_price: number | null
-  max_price: number | null
-  last_date: string | null
-}
-
 export interface PricePoint {
   receipt_id: number
   purchased_at: string | null
@@ -151,4 +146,62 @@ export interface PricePoint {
 export interface Meta {
   models: string[]
   llm_base_url: string
+  text_models: string[]
+  strong_models: string[]
+  audio_models: string[]
+  ask_models: string[]
+  email_enabled: boolean
+  email_address: string | null
+  warranty_remind_days: number
+}
+
+export interface Product {
+  key: string
+  name: string | null
+  name_original: string
+  variants: number
+  count: number
+  min_price: number | null
+  max_price: number | null
+  last_date: string | null
+}
+
+export interface Warranty {
+  item_id: number
+  name: string
+  name_original: string
+  total: number
+  warranty_until: string
+  days_left: number
+  receipt_id: number
+  store: string | null
+  purchased_at: string | null
+  has_image: boolean
+}
+
+export interface StatementTx {
+  external_id: string
+  date: string | null
+  amount: number
+  merchant: string | null
+  card: string | null
+  owner_id: number | null
+  match: { id: number; title: string; purchased_at: string | null; total: number | null; source: string } | null
+  imported: boolean
+}
+
+export interface BankImportInfo {
+  import_id: string
+  created_at: string | null
+  count: number
+  total: number
+  date_from: string | null
+  date_to: string | null
+  from_bot: boolean
+}
+
+export interface AskResult {
+  answer: string
+  model: string
+  tools: string[]
 }
