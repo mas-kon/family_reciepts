@@ -1,4 +1,4 @@
-import { Alert, Anchor, Button, Card, Group, Loader, SegmentedControl, SimpleGrid, Stack, Table, Text, Title } from '@mantine/core'
+import { Anchor, Button, Card, Group, Loader, SegmentedControl, SimpleGrid, Stack, Table, Text, Title } from '@mantine/core'
 import { IconExternalLink, IconRefresh } from '@tabler/icons-react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
@@ -247,12 +247,6 @@ export function LLMPanel() {
             first="Модель"
             rows={u.by_model.map((r) => ({ ...r, name: r.model, sub: r.provider ?? (r.failed === r.calls ? 'ошибка' : null) }))}
           />
-          {u.by_model.some((r) => r.byok_calls < r.calls - r.failed) && (
-            <Alert color="yellow" variant="light">
-              Часть запросов оплачена с баланса OpenRouter, а не вашими ключами: OpenRouter отправил их другому
-              провайдеру, он указан рядом с моделью. Как это изменить, написано в README, раздел «Расходы».
-            </Alert>
-          )}
         </>
       )}
     </Stack>
