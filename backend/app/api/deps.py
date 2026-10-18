@@ -35,4 +35,3 @@ async def current_viewer(request: Request) -> Viewer:
     except BadSignature:
         raise HTTPException(401, "Сессия недействительна")
     return Viewer(user_id=data.get("u"), name=data.get("n", ""), method=data.get("m", ""))
-

@@ -37,7 +37,7 @@ The interface, the bot's replies and the default categories are in Russian. Rece
 - **Statistics** by category, person, month and store; a filterable list of receipts; CSV export.
 - **Questions in plain language** in the web app: "how much did we spend on cafés this summer?".
 - **Budgets per category.** The bot warns the group at 80% and when the budget is exceeded.
-- **Monthly report** with a chart and a short LLM comment is posted to the group on the 1st of each month.
+- **Monthly report** with a chart and a short LLM comment is posted to the group on the 1st of each month. If the service was down then, it is sent at the next start. A receipt cut off by a restart is marked failed and can be re-read in the web app.
 - **Price history.** The same product sold under different names in different stores is merged into one.
 - **Warranties.** The bot reminds you when an appliance's warranty is about to end.
 - **LLM balance and spending** in one place, with a warning in the group when the balance runs low.
@@ -86,7 +86,7 @@ You need Docker with Compose. To run without Docker, you need [uv](https://docs.
 
 1. In [@BotFather](https://t.me/BotFather), create a bot with `/newbot` and save the token.
 2. Still in BotFather, run `/setprivacy`, choose the bot and select **Disable**. Otherwise the bot cannot see photos and voice messages in the group.
-3. Add the bot to the family group and send `/chatid` there. The bot replies with the group's ID. This command works before the setup is finished.
+3. Add the bot to the family group and send `/chatid` there. The bot replies with the group's ID. This command works before the setup is finished. While `ALLOWED_CHAT_IDS` is empty, the bot answers only `/chatid` and ignores every other chat (it is open to all chats only with `AUTH_DISABLED=true`).
 
 ### 2. LLM key
 
@@ -97,6 +97,8 @@ Sign up at [openrouter.ai](https://openrouter.ai), create a key and top up a few
 ```bash
 cp .env.example .env   # .env.example.ru has the same settings with Russian comments
 # fill in BOT_TOKEN, ALLOWED_CHAT_IDS, LLM_API_KEY, SECRET_KEY and WEB_PASSWORD
+# (SECRET_KEY left as change-me or empty: a random key is created once in data/.secret_key)
+# WEB_BIND=127.0.0.1 publishes the port only on this machine, for a reverse proxy running here
 ```
 
 ### 4. Run with Docker
@@ -122,7 +124,7 @@ The container restarts by itself after a crash and after the machine reboots.
 2. Set `IMAP_HOST`, `IMAP_USER` and `IMAP_PASSWORD` in `.env`, then run `docker compose restart`.
 3. In the web app, under Settings → Family («Настройки → Семья»), enter every address of each person, for example a personal and a work one. Type each address and press Enter. A receipt forwarded from any of them is booked for that person. Mail from an unknown address is processed too, but without an owner.
 
-The bot checks the mailbox every `IMAP_POLL_MINUTES` minutes and posts about each receipt in the group. Processed messages are marked as read.
+The bot checks the mailbox every `IMAP_POLL_MINUTES` minutes and posts about each receipt in the group. A message is marked as read only after it has been processed, so a failure does not lose it; every attachment of a message is read as a separate receipt.
 
 ### Run without Docker
 
@@ -136,7 +138,7 @@ To start it automatically without Docker, use the systemd unit in `deploy/check-
 ## Signing in to the web app
 
 - **With Telegram.** Works when the web app has a domain. In @BotFather, run `/setdomain` and enter the domain. Only members of the groups in `ALLOWED_CHAT_IDS` are let in.
-- **With a password.** Set `WEB_PASSWORD`. Useful while there is no domain.
+- **With a password.** Set `WEB_PASSWORD`. Useful while there is no domain. After 5 wrong attempts in a minute, further attempts from that address are refused for a minute.
 
 To open the app to the internet, put a reverse proxy with HTTPS in front of it, for example Caddy:
 
@@ -225,7 +227,7 @@ The type can be changed on the record's page. Moves between your own accounts an
 **Bank notifications.** The bot passes a message to the LLM only if it contains an amount with a currency and a banking word: card, плащане, покупка, постъпление, превод and the like. Ordinary chat never goes to the LLM. Then:
 - **Type.** The LLM tells a purchase, income, a transfer to a person and a move between own accounts apart. The record type follows the rules above.
 - **Owner.** If the card's last 4 digits are entered for someone under Settings → Family, the record is booked for that person. Otherwise it is booked for whoever forwarded the message.
-- **Duplicates.** If the same amount of the same type is already recorded within two days, for example an expense from a receipt, the bot only says so and books nothing. A notification forwarded twice is recognised too.
+- **Duplicates.** If the same amount of the same type is already recorded within two days from another source, for example an expense from a receipt, the bot only says so and books nothing. Another bank record counts as the same operation only for the same shop on the same day. Two identical operations of one day are two purchases; loading the same statement again books nothing twice. A notification forwarded twice is recognised too.
 
 **Statement.** The "Statement" page («Выписка») in the web app. Upload a CSV or a PDF with text; scans do not work. The LLM finds the transactions, and the page shows each one's type and which are already recorded, by the same rules. You can change a row's type. Nothing is saved until you press "Book" («Записать»). Importing the same statement again creates no duplicates.
 
@@ -272,9 +274,14 @@ Where things are in the backend:
 | `app/email_inbox.py` | receipts from the mailbox |
 | `app/warranty.py` | warranty reminders |
 | `app/reports.py` | monthly report and its comment |
-| `app/llm/` | LLM client, prompts and response schemas |
+| `app/llm/` | LLM client (one per process, model fallback), prompts and response schemas |
 | `app/llm/usage.py` | request log, provider balances, low-balance warning |
-| `app/bot/handlers.py` | the bot |
+| `app/bot/handlers.py` | the bot (an access check for family chats runs before every handler) |
+| `app/bot/ui.py` | bot messages and buttons, also used by the jobs and the mailbox poller |
+| `app/family.py` | family members found by name, card, e-mail or the name in the bank |
+| `app/clock.py` | local time (`now_local`) |
+| `app/constants.py` | record kinds and shared names |
+| `app/api/` | web API, one module per resource (receipts, stats, users, categories, budgets, recurring, llm, ai, auth) |
 
 ## Backup
 

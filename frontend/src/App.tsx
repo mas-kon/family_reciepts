@@ -24,17 +24,20 @@ import {
   IconTrendingUp,
 } from '@tabler/icons-react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { lazy, Suspense } from 'react'
 import { Link, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { api, ApiError } from './api'
-import Ask from './pages/Ask'
-import BankImport from './pages/BankImport'
-import Dashboard from './pages/Dashboard'
 import Login from './pages/Login'
-import Products from './pages/Products'
-import ReceiptDetailPage from './pages/ReceiptDetail'
-import Receipts from './pages/Receipts'
-import Settings from './pages/Settings'
-import Warranties from './pages/Warranties'
+
+// pages load on demand: charts and the settings tabs stay out of the first download
+const Ask = lazy(() => import('./pages/Ask'))
+const BankImport = lazy(() => import('./pages/BankImport'))
+const Dashboard = lazy(() => import('./pages/Dashboard'))
+const Products = lazy(() => import('./pages/Products'))
+const ReceiptDetailPage = lazy(() => import('./pages/ReceiptDetail'))
+const Receipts = lazy(() => import('./pages/Receipts'))
+const Settings = lazy(() => import('./pages/Settings'))
+const Warranties = lazy(() => import('./pages/Warranties'))
 
 interface Me {
   user_id: number | null
@@ -127,6 +130,7 @@ export default function App() {
       </AppShell.Navbar>
 
       <AppShell.Main>
+        <Suspense fallback={<Loader />}>
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/receipts" element={<Receipts />} />
@@ -138,6 +142,7 @@ export default function App() {
           <Route path="/settings" element={<Settings />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
+        </Suspense>
       </AppShell.Main>
     </AppShell>
   )

@@ -11,11 +11,12 @@ import logging
 import time
 import urllib.error
 import urllib.request
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.clock import now_local
 from app.config import get_settings
 from app.db.models import LLMCall
 
@@ -50,7 +51,6 @@ def _usage_fields(resp) -> dict:
 async def record_call(task: str, model: str, resp, error: Exception | None = None) -> None:
     """Saves one request. Never raises: the log must not break recognition."""
     from app.db.session import session_factory
-    from app.receipts.service import now_local
 
     try:
         row = LLMCall(created_at=now_local(), task=task, model=model, ok=error is None)
@@ -70,19 +70,24 @@ async def record_call(task: str, model: str, resp, error: Exception | None = Non
 
 
 async def usage_report(session: AsyncSession, days: int = 30) -> dict:
-    from app.receipts.service import now_local
-
     since = (now_local() - timedelta(days=days - 1)).replace(hour=0, minute=0, second=0, microsecond=0)
     cols = (
         func.count(LLMCall.id).label("calls"),
         func.sum(case((LLMCall.ok.is_(False), 1), else_=0)).label("failed"),
         func.coalesce(func.sum(LLMCall.cost), 0).label("cost"),
-        func.coalesce(func.sum(case((LLMCall.is_byok.is_(True), LLMCall.upstream_cost), else_=0)), 0).label("byok_cost"),
+        func.coalesce(func.sum(case((LLMCall.is_byok.is_(True), LLMCall.upstream_cost), else_=0)), 0).label(
+            "byok_cost"
+        ),
         func.sum(case((LLMCall.is_byok.is_(True), 1), else_=0)).label("byok_calls"),
     )
 
     async def group(*keys):
-        q = select(*keys, *cols).where(LLMCall.created_at >= since).group_by(*keys).order_by(func.count(LLMCall.id).desc())
+        q = (
+            select(*keys, *cols)
+            .where(LLMCall.created_at >= since)
+            .group_by(*keys)
+            .order_by(func.count(LLMCall.id).desc())
+        )
         return [dict(r._mapping) for r in await session.execute(q)]
 
     day = func.strftime("%Y-%m-%d", LLMCall.created_at)
@@ -202,7 +207,8 @@ async def check_balance(bot) -> list[str]:
     if new:
         await bot.send_message(
             s.notify_chat_id,
-            "💳 Пора пополнить баланс нейросети:\n" + "\n".join(f"• {m}" for m in new)
+            "💳 Пора пополнить баланс нейросети:\n"
+            + "\n".join(f"• {m}" for m in new)
             + "\nПодробности в вебе: Настройки → Нейросеть.",
         )
     return new

@@ -12,7 +12,8 @@ services:
       DATABASE_URL: sqlite+aiosqlite:////app/data/app.db
       DATA_DIR: /app/data
     ports:
-      - "${WEB_PORT:-8000}:8000"
+      # WEB_BIND=127.0.0.1 when a reverse proxy runs on the same machine
+      - "${WEB_BIND:-0.0.0.0}:${WEB_PORT:-8000}:8000"
     volumes:
       - ./data:/app/data
     logging:

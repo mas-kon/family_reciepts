@@ -4,7 +4,7 @@ import io
 import logging
 import re
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
 
@@ -13,14 +13,17 @@ from pillow_heif import register_heif_opener
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.clock import now_local
 from app.config import get_settings
+from app.constants import INCOME_DEFAULT, NO_DESCRIPTION, PURCHASE_DEFAULT, Kind
 from app.db.models import Category, CategoryOverride, Item, Receipt, User
-from app.llm.client import LLMClient, LLMError
+from app.family import apply_family_names, find_user
+from app.llm.client import LLMClient, LLMError, get_llm
 from app.llm.prompt import manual_system, receipt_system
 from app.llm.schema import ParsedReceipt
 from app.receipts.money import round2
 from app.receipts.qr import FiscalQR, find_fiscal_qr, parse_fiscal_qr
-from app.receipts.text import CategoryMatcher, normalize_name
+from app.receipts.text import CategoryMatcher, csv_list, normalize_name
 
 log = logging.getLogger(__name__)
 register_heif_opener()
@@ -34,27 +37,25 @@ class ProcessResult:
     error: str | None = None
 
 
-@dataclass
-class Checks:
-    reasons: list[str] = field(default_factory=list)
+def single_item(name: str, total: float | None, category_id: int | None, position: int = 0) -> Item:
+    """The only line of a one-line record: a manual entry, a bank operation, a total-only receipt."""
+    return Item(
+        position=position,
+        name_original=name,
+        name_ru=name,
+        name_normalized=normalize_name(name),
+        qty=1,
+        unit_price=round2(total),
+        total=round2(total),
+        category_id=category_id,
+    )
 
-    def add(self, msg: str):
-        self.reasons.append(msg)
-
-
-def now_local() -> datetime:
-    from zoneinfo import ZoneInfo
-
-    return datetime.now(ZoneInfo(get_settings().timezone)).replace(tzinfo=None, microsecond=0)
-
-
-NO_DESCRIPTION = "Без описания"
 
 _MANUAL_RE = re.compile(
     r"^(?:(?P<name>.+?)\s+)?(?P<amount>\d+(?:[.,]\d{1,2})?)\s*(?:€|eur|евро)?\s*$",
     re.IGNORECASE,
 )
-_WHO_RE = re.compile(r"^(?P<who>@\w{3,32}|[^\s:@]{2,30}):\s*(?P<rest>.*)$", re.S)
+_WHO_RE = re.compile(r"^(?P<who>@\w{3,32}|[^\s:@]{2,30}):\s*(?P<rest>.*)$", re.DOTALL)
 
 
 def parse_manual_text(text: str) -> tuple[str | None, float] | None:
@@ -67,11 +68,11 @@ def parse_manual_text(text: str) -> tuple[str | None, float] | None:
 
 
 _INCOME_RULES = [
-    (re.compile(r"зарплат|заплата|аванс|salary|payroll|wage", re.I), "Зарплата"),
-    (re.compile(r"возврат|refund|return|възстановен|върнат", re.I), "Возвраты"),
-    (re.compile(r"кэшбэк|кешбэк|кешбек|cashback|cash back|процент|лихв|interest", re.I), "Проценты и кэшбэк"),
-    (re.compile(r"подработ|фриланс|freelance|гонорар|хонорар", re.I), "Подработка"),
-    (re.compile(r"подар|помощ|gift", re.I), "Подарки и помощь"),
+    (re.compile(r"зарплат|заплата|аванс|salary|payroll|wage", re.IGNORECASE), "Зарплата"),
+    (re.compile(r"возврат|refund|return|възстановен|върнат", re.IGNORECASE), "Возвраты"),
+    (re.compile(r"кэшбэк|кешбэк|кешбек|cashback|cash back|процент|лихв|interest", re.IGNORECASE), "Проценты и кэшбэк"),
+    (re.compile(r"подработ|фриланс|freelance|гонорар|хонорар", re.IGNORECASE), "Подработка"),
+    (re.compile(r"подар|помощ|gift", re.IGNORECASE), "Подарки и помощь"),
 ]
 
 
@@ -99,6 +100,20 @@ def add_months(d: date, months: int) -> date:
     return date(year, month, min(d.day, calendar.monthrange(year, month)[1]))
 
 
+def prepare_photo(data: bytes, ext: str) -> tuple[Image.Image, FiscalQR | None, str | None, bytes, str]:
+    """Decodes a photo, reads its fiscal QR code and straightens a receipt shot sideways or
+    upside down. CPU work: call it in a thread. Returns (image, qr, qr text, bytes to keep, ext)."""
+    image = ImageOps.exif_transpose(Image.open(io.BytesIO(data)))
+    image.load()
+    qr, qr_raw, rotation = find_fiscal_qr(image)
+    if rotation:
+        image = image.rotate(rotation, expand=True)
+        buf = io.BytesIO()
+        image.convert("RGB").save(buf, format="JPEG", quality=92)
+        data, ext = buf.getvalue(), "jpg"
+    return image, qr, qr_raw, data, ext
+
+
 def pdf_text_and_preview(data: bytes, max_pages: int = 3) -> tuple[str, bytes]:
     """Text layer of the first pages and a JPEG of the first page."""
     import pypdfium2 as pdfium
@@ -116,61 +131,48 @@ def pdf_text_and_preview(data: bytes, max_pages: int = 3) -> tuple[str, bytes]:
     return text, buf.getvalue()
 
 
-async def find_user(session: AsyncSession, token: str) -> User | None:
-    """Family member by @username or by name (full or first word), case-insensitive."""
-    users = list(await session.scalars(select(User)))
-    t = token.strip()
-    if t.startswith("@"):
-        uname = t[1:].lower()
-        return next((u for u in users if (u.username or "").lower() == uname), None)
-    key = normalize_name(t)
-    for u in users:
-        full = normalize_name(u.name)
-        if key == full or key == full.split(" ")[0]:
-            return u
-    return None
-
-
 class ReceiptService:
     def __init__(self, session: AsyncSession, llm: LLMClient | None = None, auto_products: bool = True):
         self.session = session
-        self.llm = llm or LLMClient()
+        self.llm = llm or get_llm()
         self.auto_products = auto_products
         self.settings = get_settings()
 
     # ---------- helpers ----------
 
-    async def get_or_create_user(
-        self, telegram_id: int, name: str, username: str | None = None
-    ) -> User:
+    async def get_or_create_user(self, telegram_id: int, name: str, username: str | None = None) -> User:
         user = await self.session.scalar(select(User).where(User.telegram_id == telegram_id))
         if user is None:
             user = User(telegram_id=telegram_id, name=name, username=username)
             self.session.add(user)
             await self.session.flush()
-        elif user.name != name or user.username != username:
-            user.name, user.username = name, username
+        elif user.username != username:
+            # the name is kept: it may have been changed by hand in Settings → Family
+            user.username = username
         return user
 
     async def find_user(self, token: str) -> User | None:
         return await find_user(self.session, token)
 
     async def matcher(self) -> CategoryMatcher:
-        cats = list(await self.session.scalars(select(Category).where(Category.kind == "expense")))
+        cats = list(await self.session.scalars(select(Category).where(Category.kind == Kind.EXPENSE)))
         return CategoryMatcher(cats)
 
     async def income_category(self, name: str) -> int | None:
         target = income_category_name(name)
         return await self.session.scalar(
-            select(Category.id).where(Category.kind == "income", Category.name == target)
+            select(Category.id).where(Category.kind == Kind.INCOME, Category.name == target)
         )
+
+    async def override_category(self, name: str) -> int | None:
+        """The category a person once chose for this product name, if any."""
+        key = normalize_name(name)
+        return (await self.overrides({key})).get(key)
 
     async def overrides(self, names: set[str]) -> dict[str, int]:
         if not names:
             return {}
-        rows = await self.session.scalars(
-            select(CategoryOverride).where(CategoryOverride.name_normalized.in_(names))
-        )
+        rows = await self.session.scalars(select(CategoryOverride).where(CategoryOverride.name_normalized.in_(names)))
         return {r.name_normalized: r.category_id for r in rows}
 
     def _save_image(self, data: bytes, ext: str = "jpg") -> str:
@@ -208,20 +210,10 @@ class ReceiptService:
     ) -> ProcessResult:
         if dup := await self._duplicate_external(external_id):
             return ProcessResult(duplicate_of=dup)
-        image = ImageOps.exif_transpose(Image.open(io.BytesIO(data)))
-        image.load()
-        qr, qr_raw, rotation = await asyncio.to_thread(find_fiscal_qr, image)
-        if rotation:
-            # receipt shot sideways or upside down: straighten it for the model and for viewing
-            image = image.rotate(rotation, expand=True)
-            buf = io.BytesIO()
-            image.convert("RGB").save(buf, format="JPEG", quality=92)
-            data, ext = buf.getvalue(), "jpg"
+        image, qr, qr_raw, data, ext = await asyncio.to_thread(prepare_photo, data, ext)
 
         if qr:
-            dup = await self.session.scalar(
-                select(Receipt).where(Receipt.fiscal_key == qr.fiscal_key)
-            )
+            dup = await self.session.scalar(select(Receipt).where(Receipt.fiscal_key == qr.fiscal_key))
             if dup:
                 return ProcessResult(duplicate_of=dup)
 
@@ -298,12 +290,23 @@ class ReceiptService:
         text, preview = await asyncio.to_thread(pdf_text_and_preview, data)
         if len(text.strip()) > 30:
             return await self.process_text_receipt(
-                text, user, source=source, external_id=external_id, note=note,
-                image_data=preview, chat_id=chat_id, message_id=message_id,
+                text,
+                user,
+                source=source,
+                external_id=external_id,
+                note=note,
+                image_data=preview,
+                chat_id=chat_id,
+                message_id=message_id,
             )
         return await self.process_photo(
-            preview, user, chat_id=chat_id, message_id=message_id, note=note,
-            source=source, external_id=external_id,
+            preview,
+            user,
+            chat_id=chat_id,
+            message_id=message_id,
+            note=note,
+            source=source,
+            external_id=external_id,
         )
 
     async def reprocess(self, receipt: Receipt, models: list[str] | None = None) -> ProcessResult:
@@ -314,8 +317,13 @@ class ReceiptService:
         path = self.image_abspath(receipt)
         if not path or not path.exists():
             return ProcessResult(receipt=receipt, error="У записи нет фото чека")
-        image = ImageOps.exif_transpose(Image.open(path))
-        image.load()
+
+        def load() -> Image.Image:
+            img = ImageOps.exif_transpose(Image.open(path))
+            img.load()
+            return img
+
+        image = await asyncio.to_thread(load)
         qr = parse_fiscal_qr(receipt.qr_raw) if receipt.qr_raw else None
         return await self.recognize(receipt, image, qr, models=models, keep_if_not_receipt=True)
 
@@ -362,6 +370,9 @@ class ReceiptService:
 
         strong = [m for m in self.settings.strong_models if m != res.model]
         if receipt.status == "needs_review" and models is None and strong:
+            # apply_parsed flushed: commit now, or SQLite keeps the write lock for the whole
+            # second request and the usage log (own connection) cannot be written
+            await self.session.commit()
             try:
                 res2 = await read(strong)
             except LLMError as e:
@@ -393,7 +404,7 @@ class ReceiptService:
         matcher: CategoryMatcher,
         qr: FiscalQR | None,
     ) -> None:
-        checks = Checks()
+        reasons: list[str] = []
         tol = self.settings.review_tolerance
 
         receipt.store = (parsed.store or receipt.store or "").strip() or None
@@ -405,7 +416,7 @@ class ReceiptService:
         total = parsed.total
         if qr:
             if total is not None and abs(total - qr.amount) > tol:
-                checks.add(f"Сумма в QR ({qr.amount:.2f}) не совпадает с итогом чека ({total:.2f})")
+                reasons.append(f"Сумма в QR ({qr.amount:.2f}) не совпадает с итогом чека ({total:.2f})")
             total = qr.amount
         receipt.total = round2(total)
 
@@ -442,34 +453,20 @@ class ReceiptService:
 
         if not parsed.items and receipt.total is not None:
             # e.g. a greengrocer's receipt with only the total: book it as one line
-            name = receipt.note or receipt.store or "Покупка"
-            remembered = await self.overrides({normalize_name(name)})
-            receipt.items.append(
-                Item(
-                    position=0,
-                    name_original=name,
-                    name_ru=name,
-                    name_normalized=normalize_name(name),
-                    qty=1,
-                    unit_price=receipt.total,
-                    total=receipt.total,
-                    category_id=remembered.get(normalize_name(name)),
-                )
-            )
+            name = receipt.note or receipt.store or PURCHASE_DEFAULT
+            receipt.items.append(single_item(name, receipt.total, await self.override_category(name)))
         elif not parsed.items:
-            checks.add("Не найдено ни одной позиции")
+            reasons.append("Не найдено ни одной позиции")
         elif receipt.total is not None:
             items_sum = sum(i.total for i in parsed.items)
             if abs(items_sum - receipt.total) > tol:
-                checks.add(
-                    f"Сумма позиций ({items_sum:.2f}) не совпадает с итогом ({receipt.total:.2f})"
-                )
+                reasons.append(f"Сумма позиций ({items_sum:.2f}) не совпадает с итогом ({receipt.total:.2f})")
         if receipt.total is None:
             receipt.total = round2(sum(i.total for i in parsed.items))
-            checks.add("Итог чека не найден, посчитан по позициям")
+            reasons.append("Итог чека не найден, посчитан по позициям")
 
-        receipt.status = "needs_review" if checks.reasons else "ok"
-        receipt.review_reason = "\n".join(checks.reasons) or None
+        receipt.status = "needs_review" if reasons else "ok"
+        receipt.review_reason = "\n".join(reasons) or None
 
     # ---------- single-line entries (manual, recurring) ----------
 
@@ -488,7 +485,7 @@ class ReceiptService:
         message_id: int | None = None,
         external_id: str | None = None,
         import_id: str | None = None,
-        kind: str = "expense",
+        kind: Kind = Kind.EXPENSE,
         counterparty: str | None = None,
         peer_user_id: int | None = None,
     ) -> Receipt:
@@ -508,18 +505,7 @@ class ReceiptService:
             chat_id=chat_id,
             message_id=message_id,
         )
-        receipt.items.append(
-            Item(
-                position=0,
-                name_original=name,
-                name_ru=name,
-                name_normalized=normalize_name(name),
-                qty=1,
-                unit_price=round2(amount),
-                total=round2(amount),
-                category_id=category_id,
-            )
-        )
+        receipt.items.append(single_item(name, amount, category_id))
         self.session.add(receipt)
         await self.session.commit()
         return receipt
@@ -535,14 +521,14 @@ class ReceiptService:
         quick = parse_manual_text(text)
         if not quick:
             return None
-        name = quick[0] or "Поступление"
+        name = quick[0] or INCOME_DEFAULT
         return await self.book_single(
             name=name,
             amount=quick[1],
             category_id=await self.income_category(name),
             user_id=user.id if user else None,
             source="manual",
-            kind="income",
+            kind=Kind.INCOME,
             chat_id=chat_id,
             message_id=message_id,
         )
@@ -569,13 +555,11 @@ class ReceiptService:
             )
         matcher = await self.matcher()
         name = amount = None
-        category = None
+        category_id = None
         if quick:
             name, amount = quick
-            remembered = await self.overrides({normalize_name(name)})
-            if remembered:
-                category = await self.session.get(Category, remembered[normalize_name(name)])
-        if category is None:
+            category_id = await self.override_category(name)
+        if category_id is None:
             try:
                 res = await self.llm.parse_manual(text, manual_system(matcher.path_list()))
                 if name is None:
@@ -584,12 +568,13 @@ class ReceiptService:
             except LLMError as e:
                 log.warning("manual entry LLM failed: %s", e)
                 category = matcher.fallback
+            category_id = category.id if category else None
         if not name or amount is None:
             return None
         return await self.book_single(
             name=name,
             amount=amount,
-            category_id=category.id if category else None,
+            category_id=category_id,
             user_id=user.id if user else None,
             source="manual",
             chat_id=chat_id,
@@ -598,9 +583,8 @@ class ReceiptService:
 
     async def classify(self, name: str, amount: float) -> int | None:
         """Category for a single free-text purchase: remembered choice first, then the LLM."""
-        remembered = await self.overrides({normalize_name(name)})
-        if remembered:
-            return remembered[normalize_name(name)]
+        if (remembered := await self.override_category(name)) is not None:
+            return remembered
         matcher = await self.matcher()
         try:
             res = await self.llm.parse_manual(f"{name} {amount}", manual_system(matcher.path_list()))
@@ -615,20 +599,29 @@ class ReceiptService:
         receipt) also takes the description as its name and gets a category from it."""
         text = text.strip()
         receipt.note = text or None
+        await self.session.commit()  # no pending writes (write lock) while classify waits for the LLM
         items = await receipt.awaitable_attrs.items
-        if text and len(items) == 1 and receipt.kind == "income":
+        if text and len(items) == 1 and receipt.kind == Kind.INCOME:
             it = items[0]
-            if it.name_original in {NO_DESCRIPTION, "Поступление"}:
+            if it.name_original in {NO_DESCRIPTION, INCOME_DEFAULT}:
+                category_id = await self.income_category(text)
                 it.name_original = it.name_ru = text[:300]
                 it.name_normalized = normalize_name(text)
-                it.category_id = await self.income_category(text)
-        elif text and len(items) == 1 and receipt.kind == "expense" and (
-            items[0].category_id is None or items[0].name_original in {NO_DESCRIPTION, "Покупка", receipt.store}
+                it.category_id = category_id
+        elif (
+            text
+            and len(items) == 1
+            and receipt.kind == Kind.EXPENSE
+            and (
+                items[0].category_id is None
+                or items[0].name_original in {NO_DESCRIPTION, PURCHASE_DEFAULT, receipt.store}
+            )
         ):
             it = items[0]
+            category_id = await self.classify(text, it.total)  # before any change: LLM, no lock
             it.name_original = it.name_ru = text[:300]
             it.name_normalized = normalize_name(text)
-            it.category_id = await self.classify(text, it.total) or it.category_id
+            it.category_id = category_id or it.category_id
         await self.session.commit()
         return receipt
 
@@ -638,20 +631,18 @@ class ReceiptService:
         """Expense, income or a transfer inside the family. Categories of the other kind are
         dropped, an income gets an income category."""
         receipt.kind = kind
-        receipt.peer_user_id = peer.id if kind == "transfer" and peer else None
+        receipt.peer_user_id = peer.id if kind == Kind.TRANSFER and peer else None
         cat_kind = {c.id: c.kind for c in await self.session.scalars(select(Category))}
         for it in await receipt.awaitable_attrs.items:
-            if kind == "transfer" or (it.category_id and cat_kind.get(it.category_id) != kind):
+            if kind == Kind.TRANSFER or (it.category_id and cat_kind.get(it.category_id) != kind):
                 it.category_id = None
-            if kind == "income" and it.category_id is None:
+            if kind == Kind.INCOME and it.category_id is None:
                 it.category_id = await self.income_category(it.name_original)
         await self.session.commit()
 
     async def remember_bank_name(self, member: User, name: str) -> int:
         """Transfers to/from this name are inside the family from now on, recorded ones too."""
-        from app.bank import apply_family_names
-
-        names = [n.strip() for n in (member.bank_names or "").split(",") if n.strip()]
+        names = csv_list(member.bank_names)
         if normalize_name(name) not in {normalize_name(n) for n in names}:
             member.bank_names = ",".join([*names, name.strip()])
             await self.session.commit()
@@ -664,12 +655,8 @@ class ReceiptService:
         if ov:
             ov.category_id = category_id
         else:
-            self.session.add(
-                CategoryOverride(name_normalized=name_normalized, category_id=category_id)
-            )
+            self.session.add(CategoryOverride(name_normalized=name_normalized, category_id=category_id))
         if apply_existing:
-            items = await self.session.scalars(
-                select(Item).where(Item.name_normalized == name_normalized)
-            )
+            items = await self.session.scalars(select(Item).where(Item.name_normalized == name_normalized))
             for it in items:
                 it.category_id = category_id

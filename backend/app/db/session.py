@@ -25,16 +25,11 @@ def _sqlite_pragmas(dbapi_conn, _record):
 def init_engine(url: str | None = None):
     global _engine, _sessionmaker
     url = url or get_settings().database_url
-    _engine = create_async_engine(url)
+    # a longer wait for the SQLite write lock (default 5 s) before "database is locked"
+    _engine = create_async_engine(url, connect_args={"timeout": 30} if url.startswith("sqlite") else {})
     if url.startswith("sqlite"):
         event.listen(_engine.sync_engine, "connect", _sqlite_pragmas)
     _sessionmaker = async_sessionmaker(_engine, expire_on_commit=False)
-    return _engine
-
-
-def get_engine():
-    if _engine is None:
-        init_engine()
     return _engine
 
 

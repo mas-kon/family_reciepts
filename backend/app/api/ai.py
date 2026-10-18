@@ -1,5 +1,6 @@
 """AI features in the web UI: questions, bank statements, product grouping, warranties."""
 
+import asyncio
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
@@ -19,11 +20,13 @@ from app.bank import (
     statement_text,
     tx_external_id,
 )
+from app.clock import now_local
+from app.constants import Kind
 from app.db.models import Item, Receipt, User
 from app.db.session import get_session
-from app.llm.client import LLMClient, LLMError
+from app.llm.client import LLMError, get_llm
 from app.llm.schema import ParsedBankTx
-from app.receipts.service import ReceiptService, now_local
+from app.receipts.service import ReceiptService
 
 router = APIRouter(prefix="/api", tags=["ai"], dependencies=[Depends(current_viewer)])
 
@@ -64,11 +67,13 @@ def _receipt_brief(r: Receipt | None) -> dict | None:
 @router.post("/bank/statement")
 async def bank_statement(file: UploadFile = File(...), session: AsyncSession = Depends(get_session)):
     """Reads a statement and shows which expenses are not recorded yet. Nothing is saved."""
-    data = await file.read()
+    if file.size is not None and file.size > MAX_STATEMENT_BYTES:
+        raise HTTPException(413, "Файл больше 5 МБ")
+    data = await file.read(MAX_STATEMENT_BYTES + 1)
     if len(data) > MAX_STATEMENT_BYTES:
         raise HTTPException(413, "Файл больше 5 МБ")
     try:
-        text = statement_text(data, file.filename or "")
+        text = await asyncio.to_thread(statement_text, data, file.filename or "")
     except ValueError as e:
         raise HTTPException(400, str(e))
     svc = ReceiptService(session)
@@ -107,6 +112,8 @@ class StatementTx(BaseModel):
     type: str | None = None
     counterparty: str | None = None
     kind: str = Field("expense", pattern="^(expense|income|transfer)$")
+    # id from the analysis (identical operations of a statement differ in it)
+    external_id: str | None = None
     # family member of a transfer; with a counterparty it is remembered as their name in the bank
     peer_id: int | None = None
 
@@ -129,16 +136,22 @@ async def bank_import(
         tx = ParsedBankTx(
             amount=t.amount, merchant=t.merchant, date=t.date, card=t.card, type=t.type, counterparty=t.counterparty
         )
-        if await session.scalar(select(Receipt.id).where(Receipt.external_id == tx_external_id(tx))):
+        ext = t.external_id or tx_external_id(tx)
+        if await session.scalar(select(Receipt.id).where(Receipt.external_id == ext)):
             skipped += 1
             continue
         owner = await session.get(User, t.owner_id or viewer.user_id) if (t.owner_id or viewer.user_id) else None
-        peer = await session.get(User, t.peer_id) if t.kind == "transfer" and t.peer_id else None
-        await book_tx(svc, tx, owner, kind=t.kind, peer=peer, import_id=import_id)
+        peer = await session.get(User, t.peer_id) if t.kind == Kind.TRANSFER and t.peer_id else None
+        await book_tx(svc, tx, owner, kind=t.kind, peer=peer, import_id=import_id, external_id=ext)
         booked += 1
         if peer and t.counterparty:
             remembered += await svc.remember_bank_name(peer, t.counterparty)
-    return {"booked": booked, "skipped": skipped, "import_id": import_id if booked else None, "marked_transfers": remembered}
+    return {
+        "booked": booked,
+        "skipped": skipped,
+        "import_id": import_id if booked else None,
+        "marked_transfers": remembered,
+    }
 
 
 @router.get("/bank/imports")
@@ -179,8 +192,11 @@ async def products_split(data: SplitIn, session: AsyncSession = Depends(get_sess
 
 @router.post("/products/group")
 async def products_group(session: AsyncSession = Depends(get_session)):
-    """Groups every not yet grouped product name with the LLM."""
-    return {"grouped": await products_mod.group_names(session, LLMClient())}
+    """Groups every not yet grouped product name with the LLM. Takes minutes for a long backlog,
+    so it runs in the background; the lists show the result as it arrives."""
+    names = await products_mod.ungrouped_names(session)
+    products_mod.schedule_grouping(names, get_llm())
+    return {"queued": len(names)}
 
 
 # ---------- warranties ----------
@@ -213,4 +229,3 @@ async def warranties(expired: bool = False, session: AsyncSession = Depends(get_
         }
         for it, r in rows
     ]
-

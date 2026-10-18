@@ -15,14 +15,14 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from PIL import Image, ImageOps  # noqa: E402
-from pillow_heif import register_heif_opener  # noqa: E402
+from PIL import Image, ImageOps
+from pillow_heif import register_heif_opener
 
-from app.config import get_settings  # noqa: E402
-from app.db.seed import DEFAULT_CATEGORIES  # noqa: E402
-from app.llm.client import LLMClient, LLMError  # noqa: E402
-from app.llm.prompt import receipt_system  # noqa: E402
-from app.receipts.qr import find_fiscal_qr  # noqa: E402
+from app.config import get_settings
+from app.db.seed import DEFAULT_CATEGORIES
+from app.llm.client import LLMClient, LLMError
+from app.llm.prompt import receipt_system
+from app.receipts.qr import find_fiscal_qr
 
 register_heif_opener()
 

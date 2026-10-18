@@ -89,7 +89,9 @@ async def test_remember_category_applies_to_existing(session):
 
 
 async def test_manual_text_entry(session):
-    svc = ReceiptService(session, FakeLLM(manual={"name": "Такси", "amount": 12, "category": "Такси и общественный транспорт"}))
+    svc = ReceiptService(
+        session, FakeLLM(manual={"name": "Такси", "amount": 12, "category": "Такси и общественный транспорт"})
+    )
     r = await svc.add_manual_text("такси 12", None)
     assert r.source == "manual" and r.total == 12
     assert r.items[0].category_id == await cat_id(session, "Такси и общественный транспорт")
@@ -102,7 +104,7 @@ async def test_manual_text_works_without_llm(session):
 
 
 async def test_summary_and_budget_alerts(session):
-    from app.receipts.service import now_local
+    from app.clock import now_local
 
     svc = ReceiptService(session, FakeLLM(fail=True))
     food = await cat_id(session, "Продукты")
@@ -110,14 +112,16 @@ async def test_summary_and_budget_alerts(session):
     session.add(Budget(category_id=food, amount=100))
     await session.commit()
 
-    r1 = await svc.book_single(name="Яблоки", amount=85, category_id=fruit,
-                               user_id=None, source="manual", purchased_at=now_local())
+    r1 = await svc.book_single(
+        name="Яблоки", amount=85, category_id=fruit, user_id=None, source="manual", purchased_at=now_local()
+    )
     alerts = await new_budget_alerts(session, r1)
     assert len(alerts) == 1 and "85%" in alerts[0]
     assert await new_budget_alerts(session, r1) == []
 
-    r2 = await svc.book_single(name="Груши", amount=20, category_id=fruit,
-                               user_id=None, source="manual", purchased_at=now_local())
+    r2 = await svc.book_single(
+        name="Груши", amount=20, category_id=fruit, user_id=None, source="manual", purchased_at=now_local()
+    )
     alerts = await new_budget_alerts(session, r2)
     assert len(alerts) == 1 and "превышен" in alerts[0]
 
@@ -132,8 +136,18 @@ REAL = {
     "purchased_at": "2026-10-16T17:17",
     "total": 2.57,
     "items": [
-        {"name_original": "CHUPA CHUPS THE BEST", "name_ru": "Чупа-чупс", "total": 0.28, "category": "Продукты / Сладости и снеки"},
-        {"name_original": "СЛАДОЛЕД ВАНИЛ-ВИШНА", "name_ru": "Мороженое ваниль-вишня", "total": 2.29, "category": "Продукты / Сладости и снеки"},
+        {
+            "name_original": "CHUPA CHUPS THE BEST",
+            "name_ru": "Чупа-чупс",
+            "total": 0.28,
+            "category": "Продукты / Сладости и снеки",
+        },
+        {
+            "name_original": "СЛАДОЛЕД ВАНИЛ-ВИШНА",
+            "name_ru": "Мороженое ваниль-вишня",
+            "total": 2.29,
+            "category": "Продукты / Сладости и снеки",
+        },
     ],
 }
 

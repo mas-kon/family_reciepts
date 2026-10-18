@@ -11,14 +11,17 @@ from datetime import date, datetime, timedelta
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.clock import now_local
 from app.config import get_settings
+from app.constants import Kind
 from app.db.models import Category, Item, Receipt, User
 from app.db.session import icontains
-from app.llm.client import LLMClient, LLMError
+from app.family import find_user
+from app.llm.client import LLMClient, LLMError, get_llm
 from app.llm.prompt import ASK_SYSTEM
-from app.products import PRODUCT_KEY, with_alias
+from app.products import with_alias
 from app.receipts.text import leaf_categories
-from app.stats import monthly, summary
+from app.stats import PRODUCT_KEY, monthly, summary
 
 log = logging.getLogger(__name__)
 
@@ -65,8 +68,10 @@ TOOLS = [
             "верхнего уровня, за последние N месяцев.",
             "parameters": {
                 "type": "object",
-                "properties": {"months": {"type": "integer", "description": "Сколько месяцев, 1–36"},
-                               "person": PERIOD["person"]},
+                "properties": {
+                    "months": {"type": "integer", "description": "Сколько месяцев, 1–36"},
+                    "person": PERIOD["person"],
+                },
             },
         },
     },
@@ -82,8 +87,11 @@ TOOLS = [
                 "properties": {
                     "query": {"type": "string", "description": "Слово для поиска"},
                     "category": {"type": "string", "description": "Категория или подкатегория"},
-                    "kind": {"type": "string", "enum": ["expense", "income"],
-                             "description": "expense: покупки (по умолчанию), income: доходы"},
+                    "kind": {
+                        "type": "string",
+                        "enum": ["expense", "income"],
+                        "description": "expense: покупки (по умолчанию), income: доходы",
+                    },
                     **PERIOD,
                 },
             },
@@ -95,8 +103,6 @@ TOOLS = [
 async def _person_id(session: AsyncSession, person: str | None) -> int | None:
     if not person:
         return None
-    from app.receipts.service import find_user
-
     u = await find_user(session, person)
     return u.id if u else -1  # -1: unknown person -> empty result
 
@@ -125,7 +131,7 @@ async def tool_get_monthly(session, months=12, person=None):
 async def tool_search_purchases(
     session, query=None, category=None, date_from=None, date_to=None, person=None, kind=None
 ):
-    conds = [Receipt.status != "failed", Receipt.kind == ("income" if kind == "income" else "expense")]
+    conds = [Receipt.status != "failed", Receipt.kind == ("income" if kind == Kind.INCOME else "expense")]
     if query:
         conds.append(
             or_(
@@ -149,15 +155,22 @@ async def tool_search_purchases(
     agg = (
         await session.execute(
             with_alias(
-                select(func.coalesce(func.sum(Item.total), 0), func.count(Item.id)).select_from(Item)
+                select(func.coalesce(func.sum(Item.total), 0), func.count(Item.id))
+                .select_from(Item)
                 .join(Receipt, Item.receipt_id == Receipt.id)
             ).where(*conds)
         )
     ).one()
     rows = await session.execute(
         base.with_only_columns(
-            Receipt.purchased_at, Receipt.store, User.name, Item.name_ru, Item.name_original,
-            Item.qty, Item.unit_price, Item.total,
+            Receipt.purchased_at,
+            Receipt.store,
+            User.name,
+            Item.name_ru,
+            Item.name_original,
+            Item.qty,
+            Item.unit_price,
+            Item.total,
         )
         .outerjoin(User, Receipt.user_id == User.id)
         .order_by(Receipt.purchased_at.desc())
@@ -188,12 +201,13 @@ HANDLERS = {
 }
 
 
-async def answer(session: AsyncSession, question: str, history: list[dict] | None = None,
-                 llm: LLMClient | None = None) -> dict:
-    from app.receipts.service import now_local
-
-    llm = llm or LLMClient()
-    cats = ", ".join(leaf_categories(list(await session.scalars(select(Category).where(Category.kind == "expense")))))
+async def answer(
+    session: AsyncSession, question: str, history: list[dict] | None = None, llm: LLMClient | None = None
+) -> dict:
+    llm = llm or get_llm()
+    cats = ", ".join(
+        leaf_categories(list(await session.scalars(select(Category).where(Category.kind == Kind.EXPENSE))))
+    )
     family = ", ".join(u.name for u in await session.scalars(select(User))) or "нет"
     system = (
         ASK_SYSTEM.replace("{today}", f"{now_local():%Y-%m-%d}")
@@ -218,7 +232,11 @@ async def answer(session: AsyncSession, question: str, history: list[dict] | Non
                 "role": "assistant",
                 "content": msg.content or "",
                 "tool_calls": [
-                    {"id": c.id, "type": "function", "function": {"name": c.function.name, "arguments": c.function.arguments}}
+                    {
+                        "id": c.id,
+                        "type": "function",
+                        "function": {"name": c.function.name, "arguments": c.function.arguments},
+                    }
                     for c in calls
                 ],
             }

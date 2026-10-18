@@ -1,10 +1,29 @@
+import secrets
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_SECRET_KEYS = {"", "change-me"}
+
+
+def _persistent_secret(path: Path) -> str:
+    try:
+        key = path.read_text().strip()
+        if key:
+            return key
+    except OSError:
+        pass
+    key = secrets.token_urlsafe(32)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(key)
+        path.chmod(0o600)
+    except OSError:
+        pass  # read-only data dir: the key lives until restart
+    return key
 
 
 class Settings(BaseSettings):
@@ -40,7 +59,7 @@ class Settings(BaseSettings):
     llm_audio_models: str = ""
     # Models for questions in the web UI; they must support tool calling. Empty = text models.
     llm_ask_models: str = ""
-    llm_timeout: float = 120.0
+    llm_timeout: float = 60.0
     llm_max_image_side: int = 2000
 
     # --- Storage ---
@@ -88,6 +107,14 @@ class Settings(BaseSettings):
         if v and "://" not in v:
             v = "https://" + v
         return v
+
+    @model_validator(mode="after")
+    def _own_secret_key(self) -> "Settings":
+        """A default or empty SECRET_KEY would let anyone forge a session cookie: use a random
+        key generated once and kept in the data directory instead."""
+        if self.secret_key in DEFAULT_SECRET_KEYS:
+            self.secret_key = _persistent_secret(self.data_dir / ".secret_key")
+        return self
 
     @property
     def allowed_chats(self) -> set[int]:

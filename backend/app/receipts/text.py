@@ -8,6 +8,11 @@ _NON_WORD = re.compile(r"[^\w%]+", re.UNICODE)
 _SPACES = re.compile(r"\s+")
 
 
+def csv_list(value: str | None) -> list[str]:
+    """'a, b,,c' -> ['a', 'b', 'c']: columns and settings that hold several values."""
+    return [p.strip() for p in (value or "").split(",") if p.strip()]
+
+
 def normalize_name(name: str) -> str:
     """Key for grouping the same product across receipts: lowercase, no punctuation."""
     s = unicodedata.normalize("NFKC", name or "").lower().replace("ё", "е")
@@ -42,9 +47,7 @@ class CategoryMatcher:
         # also allow matching by the leaf name alone
         for path, c in self.paths.items():
             self._lower.setdefault(normalize_name(path.split(" / ")[-1]), c)
-        self.fallback = next(
-            (c for c in categories if c.name == fallback_name and not c.parent_id), None
-        )
+        self.fallback = next((c for c in categories if c.name == fallback_name and not c.parent_id), None)
 
     def path_list(self) -> list[str]:
         return list(self.paths)

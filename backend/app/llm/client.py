@@ -4,12 +4,15 @@ Works with OpenRouter, Google Gemini (OpenAI endpoint), Ollama, LM Studio, OpenA
 set LLM_BASE_URL, LLM_API_KEY and LLM_MODELS in .env.
 """
 
+import asyncio
 import base64
 import io
 import json
 import logging
 import re
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import TypeVar
 
 from openai import AsyncOpenAI
@@ -17,12 +20,27 @@ from PIL import Image
 from pydantic import BaseModel, ValidationError
 
 from app.config import get_settings
+from app.llm.prompt import (
+    BANK_SYSTEM,
+    PRODUCTS_SYSTEM,
+    VOICE_USER,
+    products_user,
+    receipt_text_user,
+    receipt_user,
+)
+from app.llm.schema import ParsedBank, ParsedManual, ParsedProducts, ParsedReceipt, ParsedVoice
+from app.llm.usage import record_call
 
 log = logging.getLogger(__name__)
 
 T = TypeVar("T", bound=BaseModel)
+R = TypeVar("R")
 
-_FENCE = re.compile(r"```(?:json)?\s*(.*?)```", re.S)
+# a long text is cut: the model has a limit too
+MAX_RECEIPT_TEXT = 30000
+MAX_STATEMENT_TEXT = 60000
+
+_FENCE = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL)
 
 
 class LLMError(Exception):
@@ -73,8 +91,6 @@ class LLMClient:
 
     async def _create(self, task: str, model: str, **kwargs):
         """One request; every attempt, failed or not, goes to the usage log (app.llm.usage)."""
-        from app.llm.usage import record_call
-
         try:
             resp = await self.client.chat.completions.create(model=model, temperature=0, **kwargs)
         except Exception as e:
@@ -89,36 +105,40 @@ class LLMClient:
             raise LLMError("no choices in response")
         return resp.choices[0].message.content or ""
 
-    async def structured(
-        self, messages: list[dict], schema: type[T], models: list[str], task: str = "other"
-    ) -> LLMResult[T]:
+    @staticmethod
+    async def _first_success(models: list[str], attempt: Callable[[str], Awaitable[R]]) -> R:
+        """Tries the models in order; the first one that answers wins. LLMError lists every failure."""
         errors: list[str] = []
         for model in models:
             try:
-                text = await self._ask(model, messages, task)
-                raw = extract_json(text)
-                return LLMResult(data=schema.model_validate(raw), model=model, raw=raw)
+                return await attempt(model)
             except (ValueError, ValidationError) as e:
-                log.warning("model %s returned bad JSON: %s", model, e)
+                log.warning("model %s returned a bad answer: %s", model, e)
                 errors.append(f"{model}: bad answer ({type(e).__name__})")
             except Exception as e:  # network, rate limit, unsupported model, ...
                 log.warning("model %s failed: %s", model, e)
                 errors.append(f"{model}: {type(e).__name__}: {str(e)[:200]}")
         raise LLMError("; ".join(errors) or "no models configured")
 
+    async def structured(
+        self, messages: list[dict], schema: type[T], models: list[str], task: str = "other"
+    ) -> LLMResult[T]:
+        async def attempt(model: str) -> LLMResult[T]:
+            raw = extract_json(await self._ask(model, messages, task))
+            return LLMResult(data=schema.model_validate(raw), model=model, raw=raw)
+
+        return await self._first_success(models, attempt)
+
     async def parse_receipt(
         self, image: Image.Image, system: str, models: list[str] | None = None, hint: str | None = None
     ):
-        from app.llm.prompt import RECEIPT_USER
-        from app.llm.schema import ParsedReceipt
-
-        url = image_to_data_url(image, self.settings.llm_max_image_side)
+        url = await asyncio.to_thread(image_to_data_url, image, self.settings.llm_max_image_side)
         messages = [
             {"role": "system", "content": system},
             {
                 "role": "user",
                 "content": [
-                    {"type": "text", "text": RECEIPT_USER + (f"\nПодпись пользователя к чеку: {hint}" if hint else "")},
+                    {"type": "text", "text": receipt_user(hint)},
                     {"type": "image_url", "image_url": {"url": url}},
                 ],
             },
@@ -126,56 +146,32 @@ class LLMClient:
         return await self.structured(messages, ParsedReceipt, models or self.settings.models, "receipt")
 
     async def parse_manual(self, text: str, system: str):
-        from app.llm.schema import ParsedManual
-
-        messages = [
-            {"role": "system", "content": system},
-            {"role": "user", "content": text},
-        ]
+        messages = [{"role": "system", "content": system}, {"role": "user", "content": text}]
         return await self.structured(messages, ParsedManual, self.settings.text_models, "manual")
-
-    # ---------- free text ----------
 
     async def complete_text(self, messages: list[dict], models: list[str], task: str = "comment") -> tuple[str, str]:
         """Plain text answer and the model that gave it."""
-        errors: list[str] = []
-        for model in models:
-            try:
-                text = (await self._ask(model, messages, task)).strip()
-                if text:
-                    return text, model
-                errors.append(f"{model}: empty answer")
-            except Exception as e:
-                log.warning("model %s failed: %s", model, e)
-                errors.append(f"{model}: {type(e).__name__}: {str(e)[:200]}")
-        raise LLMError("; ".join(errors) or "no models configured")
 
-    # ---------- receipts as text (e-mail) ----------
+        async def attempt(model: str) -> tuple[str, str]:
+            text = (await self._ask(model, messages, task)).strip()
+            if not text:
+                raise LLMError("empty answer")
+            return text, model
+
+        return await self._first_success(models, attempt)
 
     async def parse_receipt_text(
         self, text: str, system: str, hint: str | None = None, models: list[str] | None = None
     ):
-        from app.llm.prompt import RECEIPT_TEXT_USER
-        from app.llm.schema import ParsedReceipt
-
-        user = RECEIPT_TEXT_USER + (f"Подпись пользователя: {hint}\n\n" if hint else "") + text[:30000]
+        user = receipt_text_user(text[:MAX_RECEIPT_TEXT], hint)
         messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
         return await self.structured(messages, ParsedReceipt, models or self.settings.text_models, "receipt_text")
 
-    # ---------- bank ----------
-
     async def parse_bank(self, text: str):
-        from app.llm.prompt import BANK_SYSTEM
-        from app.llm.schema import ParsedBank
-
-        messages = [{"role": "system", "content": BANK_SYSTEM}, {"role": "user", "content": text[:60000]}]
+        messages = [{"role": "system", "content": BANK_SYSTEM}, {"role": "user", "content": text[:MAX_STATEMENT_TEXT]}]
         return await self.structured(messages, ParsedBank, self.settings.text_models, "bank")
 
-    # ---------- voice ----------
-
     async def parse_voice(self, wav: bytes, system: str):
-        from app.llm.schema import ParsedVoice
-
         models = self.settings.audio_models
         if not models:
             raise LLMError("LLM_AUDIO_MODELS is empty")
@@ -184,38 +180,33 @@ class LLMClient:
             {
                 "role": "user",
                 "content": [
-                    {"type": "text", "text": "Запиши трату из этого голосового сообщения."},
+                    {"type": "text", "text": VOICE_USER},
                     {"type": "input_audio", "input_audio": {"data": base64.b64encode(wav).decode(), "format": "wav"}},
                 ],
             },
         ]
         return await self.structured(messages, ParsedVoice, models, "voice")
 
-    # ---------- products ----------
-
     async def group_products(self, names: list[str], known: list[str]):
-        from app.llm.prompt import PRODUCTS_SYSTEM
-        from app.llm.schema import ParsedProducts
-
-        user = (
-            "Известные товары:\n" + ("\n".join(f"- {k}" for k in known) or "(пока нет)")
-            + "\n\nНовые названия из чеков:\n" + "\n".join(f"- {n}" for n in names)
-        )
-        messages = [{"role": "system", "content": PRODUCTS_SYSTEM}, {"role": "user", "content": user}]
+        messages = [
+            {"role": "system", "content": PRODUCTS_SYSTEM},
+            {"role": "user", "content": products_user(names, known)},
+        ]
         return await self.structured(messages, ParsedProducts, self.settings.text_models, "products")
-
-    # ---------- tool calling (questions in the web UI) ----------
 
     async def chat_tools(self, messages: list[dict], tools: list[dict], models: list[str]):
         """One step of a tool-calling conversation: returns (assistant message, model)."""
-        errors: list[str] = []
-        for model in models:
-            try:
-                resp = await self._create("ask", model, messages=messages, tools=tools)
-                if resp.choices:
-                    return resp.choices[0].message, model
-                errors.append(f"{model}: no choices")
-            except Exception as e:
-                log.warning("model %s failed: %s", model, e)
-                errors.append(f"{model}: {type(e).__name__}: {str(e)[:200]}")
-        raise LLMError("; ".join(errors) or "no models configured")
+
+        async def attempt(model: str):
+            resp = await self._create("ask", model, messages=messages, tools=tools)
+            if not resp.choices:
+                raise LLMError("no choices")
+            return resp.choices[0].message, model
+
+        return await self._first_success(models, attempt)
+
+
+@lru_cache
+def get_llm() -> LLMClient:
+    """One client for the whole process: it owns a connection pool, so it is not rebuilt per request."""
+    return LLMClient()

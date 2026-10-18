@@ -11,14 +11,32 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from sqlalchemy import select
 
+from app.clock import now_local
 from app.config import get_settings
+from app.constants import Kind
 from app.db.models import Recurring
 from app.db.session import session_factory
-from app.receipts.service import ReceiptService, now_local
+from app.receipts.service import ReceiptService
 from app.reports import build_monthly_report, last_month
 from app.stats import new_budget_alerts
 
 log = logging.getLogger(__name__)
+
+
+def _sent_marker(month: str):
+    return get_settings().reports_dir / f"{month}.sent"
+
+
+async def catch_up_report(bot: Bot | None) -> None:
+    """The report for last month goes out on the 1st at 9:00; if the service was down then,
+    send it at the next start. The first start only records the current state."""
+    month = last_month()
+    first_run = not get_settings().reports_dir.exists()
+    get_settings().reports_dir.mkdir(parents=True, exist_ok=True)
+    if first_run:
+        _sent_marker(month).touch()
+    if not _sent_marker(month).exists():
+        await send_monthly_report(bot, month)
 
 
 async def send_monthly_report(bot: Bot | None, month: str | None = None) -> None:
@@ -37,6 +55,8 @@ async def send_monthly_report(bot: Bot | None, month: str | None = None) -> None
         await bot.send_message(chat, text)
     else:
         await bot.send_message(chat, text + "\n\nТрат за месяц нет.")
+    _sent_marker(month).parent.mkdir(parents=True, exist_ok=True)
+    _sent_marker(month).touch()
 
 
 def _due_day(day_of_month: int, today: datetime) -> int:
@@ -62,14 +82,14 @@ async def book_recurring(bot: Bot | None) -> int:
                 source="recurring",
                 kind=rec.kind,
                 purchased_at=today.replace(day=_due_day(rec.day_of_month, today), hour=12, minute=0, second=0),
-                note="Регулярное поступление" if rec.kind == "income" else "Регулярный платёж",
+                note="Регулярное поступление" if rec.kind == Kind.INCOME else "Регулярный платёж",
             )
             rec.last_booked_month = month
             await session.commit()
             booked += 1
             chat = get_settings().notify_chat_id
             if bot and chat:
-                what = "регулярное поступление" if rec.kind == "income" else "регулярный платёж"
+                what = "регулярное поступление" if rec.kind == Kind.INCOME else "регулярный платёж"
                 await bot.send_message(chat, f"🔁 Записан {what}: {rec.name}, {rec.amount:.2f} €")
                 for a in await new_budget_alerts(session, receipt):
                     await bot.send_message(chat, a)
@@ -83,6 +103,7 @@ def create_scheduler(bot: Bot | None) -> AsyncIOScheduler:
     sched.add_job(book_recurring, CronTrigger(hour=8, minute=0, timezone=tz), args=[bot])
     # catch up on missed recurring payments right after start
     sched.add_job(book_recurring, args=[bot], next_run_time=datetime.now(ZoneInfo(tz)))
+    sched.add_job(catch_up_report, args=[bot], next_run_time=datetime.now(ZoneInfo(tz)))
 
     from app.llm.usage import check_balance
     from app.warranty import remind
@@ -96,7 +117,12 @@ def create_scheduler(bot: Bot | None) -> AsyncIOScheduler:
         from app.email_inbox import poll_inbox
 
         sched.add_job(
-            poll_inbox, "interval", minutes=max(1, s.imap_poll_minutes), args=[bot],
-            next_run_time=datetime.now(ZoneInfo(tz)), max_instances=1, coalesce=True,
+            poll_inbox,
+            "interval",
+            minutes=max(1, s.imap_poll_minutes),
+            args=[bot],
+            next_run_time=datetime.now(ZoneInfo(tz)),
+            max_instances=1,
+            coalesce=True,
         )
     return sched

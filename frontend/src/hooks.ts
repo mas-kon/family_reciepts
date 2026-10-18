@@ -1,5 +1,5 @@
 import { notifications } from '@mantine/notifications'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, type QueryClient } from '@tanstack/react-query'
 import { api, type Category, type Meta, type User } from './api'
 
 export const useCategories = () =>
@@ -17,4 +17,12 @@ export function notifyError(e: unknown) {
 
 export function notifyOk(message: string) {
   notifications.show({ color: 'teal', message })
+}
+
+/** Everything that is computed from records: lists, details, statistics, budgets, prices, warranties.
+ * Users, categories and settings are not refetched. */
+export function invalidateRecords(qc: QueryClient) {
+  for (const key of ['receipts', 'receipt', 'summary', 'monthly', 'budgets', 'products', 'prices', 'warranties', 'bank-imports']) {
+    qc.invalidateQueries({ queryKey: [key] })
+  }
 }

@@ -4,10 +4,11 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { api, qs, type LLMUsage, type ProviderBalance, type UsageRow } from '../api'
+import { notifyError } from '../hooks'
 import { usePalette } from '../palette'
 
 /** "$0.0021" for small sums, "$7.21" otherwise */
-export const usd = (v: number | null | undefined) =>
+const usd = (v: number | null | undefined) =>
   v === null || v === undefined ? '—' : `$${Math.abs(v) < 0.1 && v !== 0 ? v.toFixed(4) : v.toFixed(2)}`
 
 function BalanceCard({ b, alertBelow }: { b: ProviderBalance; alertBelow: number }) {
@@ -131,9 +132,13 @@ export function LLMPanel() {
     queryFn: () => api<LLMUsage>(`/llm/usage${qs({ days })}`),
   })
   const refresh = async () => {
-    const fresh = await api<{ alert_below: number; providers: ProviderBalance[] }>('/llm/balance?fresh=true')
-    qc.setQueryData(['llm-balance'], fresh)
-    qc.invalidateQueries({ queryKey: ['llm-usage'] })
+    try {
+      const fresh = await api<{ alert_below: number; providers: ProviderBalance[] }>('/llm/balance?fresh=true')
+      qc.setQueryData(['llm-balance'], fresh)
+      qc.invalidateQueries({ queryKey: ['llm-usage'] })
+    } catch (e) {
+      notifyError(e)
+    }
   }
   const u = usage.data
 

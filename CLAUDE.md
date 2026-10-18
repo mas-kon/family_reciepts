@@ -22,10 +22,10 @@ Every change that affects behaviour, settings, commands or setup updates the doc
 ## Layout
 
 - `backend/app/` — Python 3.13, uv. FastAPI, aiogram 3, SQLAlchemy 2 async on SQLite, APScheduler. One process runs the web app, the bot and the scheduler (`app/main.py`).
-  - `receipts/service.py` receipts and single records (`book_single`), `bank.py` bank messages, statements, record kinds and family transfers, `voice.py`, `products.py`, `ask.py`, `email_inbox.py`, `warranty.py`, `reports.py`, `stats.py`, `scheduler.py`.
-  - `llm/` client (model fallback, usage logging), `prompt.py`, `schema.py`, `usage.py` (request log, balances).
+  - `receipts/service.py` receipts and single records (`book_single`), `bank.py` bank messages, statements, record kinds and family transfers, `family.py` member lookups, `clock.py` (`now_local`), `constants.py` (`Kind`), `bot/ui.py` messages and buttons, `voice.py`, `products.py`, `ask.py`, `email_inbox.py`, `warranty.py`, `reports.py`, `stats.py`, `scheduler.py`.
+  - `llm/` client (one shared `get_llm()`, model fallback, usage logging), `prompt.py`, `schema.py`, `usage.py` (request log, balances).
   - `api/` FastAPI routers, `bot/handlers.py` the bot.
-- `backend/alembic/versions/` hand-numbered migrations `0001`… `0007`.
+- `backend/alembic/versions/` hand-numbered migrations `0001`… `0008`.
 - `frontend/src/` React 19, Vite, TypeScript, Mantine, TanStack Query, Recharts. `api.ts` holds the types that mirror the API.
 - `data/` (git-ignored) holds `app.db` and receipt photos. This is the family's real data.
 
@@ -33,6 +33,7 @@ Every change that affects behaviour, settings, commands or setup updates the doc
 
 ```bash
 cd backend && uv run pytest                      # backend tests
+cd backend && uv run ruff check .                # lint (CI runs it too)
 cd frontend && npx tsc -b && npm run build       # type check and build
 docker compose up -d --build                     # deploy (from the project root); migrations run at startup
 docker compose logs -f

@@ -1,8 +1,8 @@
 from pathlib import Path
 
-from alembic import command
 from alembic.config import Config
 
+from alembic import command
 from app.config import get_settings
 
 BACKEND = Path(__file__).resolve().parents[2]
@@ -15,7 +15,7 @@ def alembic_config() -> Config:
 
 
 def sync_url(url: str) -> str:
-    return url.replace("+aiosqlite", "").replace("+asyncpg", "+psycopg")
+    return url.replace("+aiosqlite", "")
 
 
 def upgrade() -> None:

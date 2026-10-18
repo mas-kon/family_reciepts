@@ -1,6 +1,7 @@
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.constants import Kind
 from app.db.models import Category
 
 OTHER = "Прочее"
@@ -43,12 +44,28 @@ INCOME_OTHER = "Прочие доходы"
 INCOME_CATEGORIES = ["Зарплата", "Подработка", "Подарки и помощь", "Возвраты", "Проценты и кэшбэк", INCOME_OTHER]
 
 
+async def fail_interrupted(session: AsyncSession) -> int:
+    """At startup nothing is being recognised yet: records still 'pending' were cut off by a
+    restart. Mark them failed, so they show the reason and can be re-read in the web app."""
+    from sqlalchemy import update
+
+    from app.db.models import Receipt
+
+    res = await session.execute(
+        update(Receipt)
+        .where(Receipt.status == "pending")
+        .values(status="failed", review_reason="Распознавание прервано перезапуском сервиса")
+    )
+    await session.commit()
+    return res.rowcount or 0
+
+
 async def seed_categories(session: AsyncSession) -> None:
-    if not await session.scalar(select(func.count(Category.id)).where(Category.kind == "income")):
+    if not await session.scalar(select(func.count(Category.id)).where(Category.kind == Kind.INCOME)):
         for i, name in enumerate(INCOME_CATEGORIES):
-            session.add(Category(name=name, kind="income", sort_order=100 + i))
+            session.add(Category(name=name, kind=Kind.INCOME, sort_order=100 + i))
         await session.commit()
-    count = await session.scalar(select(func.count(Category.id)).where(Category.kind == "expense"))
+    count = await session.scalar(select(func.count(Category.id)).where(Category.kind == Kind.EXPENSE))
     if count:
         return
     for i, (parent_name, children) in enumerate(DEFAULT_CATEGORIES.items()):

@@ -14,15 +14,19 @@ import hashlib
 import io
 import re
 import secrets
+from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.clock import now_local
+from app.constants import INCOME_DEFAULT, Kind
 from app.db.models import Receipt, User
+from app.family import family_by_bank_name, owner_by_card
 from app.llm.schema import ParsedBankTx
-from app.receipts.service import ReceiptService, now_local
+from app.receipts.service import ReceiptService
 from app.receipts.text import normalize_name
 
 MATCH_DAYS = 2
@@ -55,49 +59,24 @@ def looks_like_statement(text: str) -> bool:
     return bool(text and _IBAN.search(text) and words) or len(words) >= 3
 
 
-def tx_external_id(tx: ParsedBankTx) -> str:
+def tx_external_id(tx: ParsedBankTx, occurrence: int = 0) -> str:
     key = f"{tx.date:%Y-%m-%d %H:%M}" if tx.date else ""
     raw = f"{key}|{tx.amount:.2f}|{(tx.merchant or '').lower()}|{tx.card or ''}"
+    if occurrence:
+        raw += f"|{occurrence}"  # the 2nd identical operation in one batch is a separate purchase
     return "bank:" + hashlib.sha1(raw.encode()).hexdigest()
 
 
-async def owner_by_card(session: AsyncSession, card: str | None) -> User | None:
-    if not card:
-        return None
-    for u in await session.scalars(select(User).where(User.cards.is_not(None))):
-        if card in {c.strip()[-4:] for c in (u.cards or "").split(",") if c.strip()}:
-            return u
-    return None
-
-
-def _names(value: str | None) -> set[str]:
-    return {normalize_name(n) for n in (value or "").split(",") if n.strip()}
-
-
-async def family_by_bank_name(session: AsyncSession, name: str | None) -> User | None:
-    """Family member whose name in the bank (Settings → Семья) is this transfer's person."""
-    key = normalize_name(name or "")
-    if not key:
-        return None
-    for u in await session.scalars(select(User).where(User.bank_names.is_not(None))):
-        if key in _names(u.bank_names):
-            return u
-    return None
-
-
-async def apply_family_names(session: AsyncSession) -> int:
-    """Marks recorded transfers to/from family members as inside the family. Called when a
-    member's bank names change. Returns how many records changed."""
-    changed = 0
-    for r in await session.scalars(
-        select(Receipt).where(Receipt.counterparty.is_not(None), Receipt.kind != "transfer")
-    ):
-        peer = await family_by_bank_name(session, r.counterparty)
-        if peer:
-            r.kind, r.peer_user_id = "transfer", peer.id
-            changed += 1
-    await session.commit()
-    return changed
+def external_ids(txs: list[ParsedBankTx]) -> list[str]:
+    """Ids for a batch: identical operations (same minute or day, amount, shop, card) get
+    different ids, but loading the same batch again gives the same ids, so it stays idempotent."""
+    seen: Counter[str] = Counter()
+    out = []
+    for tx in txs:
+        base = tx_external_id(tx)
+        out.append(tx_external_id(tx, seen[base]))
+        seen[base] += 1
+    return out
 
 
 @dataclass
@@ -117,9 +96,20 @@ async def plan_tx(session: AsyncSession, tx: ParsedBankTx) -> TxPlan:
 
 
 async def find_match(
-    session: AsyncSession, amount: float, when: datetime | None, kind: str = "expense"
+    session: AsyncSession,
+    amount: float,
+    when: datetime | None,
+    kind: Kind = Kind.EXPENSE,
+    *,
+    merchant: str | None = None,
+    import_id: str | None = None,
+    batch_ids: set[str] | None = None,
 ) -> Receipt | None:
-    """An already recorded operation of this kind with the same total around the same date."""
+    """An already recorded operation of this kind with the same total around the same date.
+
+    Records of another source (a receipt photo, a manual entry) match by amount and date. A
+    bank record matches only the same shop on the same day, and never one from the statement
+    being imported: two coffees of 2.50 on consecutive days are two purchases."""
     when = when or now_local()
     q = (
         select(Receipt)
@@ -131,7 +121,16 @@ async def find_match(
         )
         .order_by(Receipt.purchased_at)
     )
-    return (await session.scalars(q)).first()
+    shop = normalize_name(merchant or "")
+    for r in await session.scalars(q):
+        if r.source != "bank":
+            return r
+        if (import_id and r.import_id == import_id) or r.external_id in (batch_ids or ()):
+            continue  # an exact operation of this very batch, not a receipt of the same purchase
+        same_day = r.purchased_at is not None and r.purchased_at.date() == when.date()
+        if same_day and shop and normalize_name(r.store or "") == shop:
+            return r
+    return None
 
 
 @dataclass
@@ -147,17 +146,18 @@ async def book_tx(
     tx: ParsedBankTx,
     owner: User | None,
     *,
-    kind: str = "expense",
+    kind: Kind = Kind.EXPENSE,
     peer: User | None = None,
     chat_id: int | None = None,
     message_id: int | None = None,
     import_id: str | None = None,
+    external_id: str | None = None,
 ) -> Receipt:
-    if kind == "transfer":
+    if kind == Kind.TRANSFER:
         name = tx.merchant or (f"Перевод: {peer.name}" if peer else "Перевод в семье")
         category_id = None
-    elif kind == "income":
-        name = tx.merchant or "Поступление"
+    elif kind == Kind.INCOME:
+        name = tx.merchant or INCOME_DEFAULT
         category_id = await svc.income_category(name)
     else:
         name = tx.merchant or "Оплата картой"
@@ -174,7 +174,7 @@ async def book_tx(
         note=f"Карта *{tx.card}" if tx.card else None,
         chat_id=chat_id,
         message_id=message_id,
-        external_id=tx_external_id(tx),
+        external_id=external_id or tx_external_id(tx),
         import_id=import_id,
         kind=kind,
         counterparty=tx.counterparty,
@@ -194,19 +194,29 @@ async def handle_bank_text(
     sender. Moves between own accounts are skipped."""
     res = await svc.llm.parse_bank(text)
     out: list[BankResult] = []
-    for tx in res.data.transactions:
+    txs = res.data.transactions
+    ids_all = external_ids(txs)
+    for tx, ext in zip(txs, ids_all):
         plan = await plan_tx(svc.session, tx)
         if plan.kind is None or tx.amount <= 0:
             continue
-        ext = tx_external_id(tx)
         existing = await svc.session.scalar(select(Receipt).where(Receipt.external_id == ext))
-        match = existing or await find_match(svc.session, tx.amount, tx.date, plan.kind)
+        match = existing or await find_match(
+            svc.session, tx.amount, tx.date, plan.kind, merchant=tx.merchant, batch_ids=set(ids_all)
+        )
         if match:
             out.append(BankResult(tx=tx, kind=plan.kind, match=match))
             continue
         owner = await owner_by_card(svc.session, tx.card) or sender
         receipt = await book_tx(
-            svc, tx, owner, kind=plan.kind, peer=plan.peer, chat_id=chat_id, message_id=message_id
+            svc,
+            tx,
+            owner,
+            kind=plan.kind,
+            peer=plan.peer,
+            chat_id=chat_id,
+            message_id=message_id,
+            external_id=ext,
         )
         out.append(BankResult(tx=tx, kind=plan.kind, receipt=receipt))
     return out
@@ -223,25 +233,44 @@ async def book_statement(
     *,
     chat_id: int | None = None,
     import_id: str | None = None,
+    ids: list[str] | None = None,
+    batch_ids: set[str] | None = None,
 ) -> tuple[list[Receipt], int]:
     """Books statement operations that are not recorded yet. Returns (booked, skipped).
-    All of them get one import_id."""
+    All of them get one import_id. `ids` are the operations' external ids from the analysis
+    (a subset of a statement must keep the ids it had in the whole one); `batch_ids` are the ids
+    of the whole statement."""
     import_id = import_id or new_import_id()
     booked: list[Receipt] = []
     skipped = 0
-    for tx in txs:
+    ids_all = batch_ids if batch_ids is not None else (ids or external_ids(txs))
+    for tx, ext in zip(txs, ids or external_ids(txs)):
         plan = await plan_tx(svc.session, tx)
         if plan.kind is None or tx.amount <= 0:
             continue
-        ext = tx_external_id(tx)
         if await svc.session.scalar(select(Receipt).where(Receipt.external_id == ext)) or await find_match(
-            svc.session, tx.amount, tx.date, plan.kind
+            svc.session,
+            tx.amount,
+            tx.date,
+            plan.kind,
+            merchant=tx.merchant,
+            import_id=import_id,
+            batch_ids=set(ids_all),
         ):
             skipped += 1
             continue
         owner = await owner_by_card(svc.session, tx.card) or sender
         booked.append(
-            await book_tx(svc, tx, owner, kind=plan.kind, peer=plan.peer, chat_id=chat_id, import_id=import_id)
+            await book_tx(
+                svc,
+                tx,
+                owner,
+                kind=plan.kind,
+                peer=plan.peer,
+                chat_id=chat_id,
+                import_id=import_id,
+                external_id=ext,
+            )
         )
     return booked, skipped
 
@@ -292,15 +321,18 @@ class StatementRow:
 async def analyse_statement(svc: ReceiptService, text: str) -> list[StatementRow]:
     res = await svc.llm.parse_bank(text)
     rows: list[StatementRow] = []
-    for tx in res.data.transactions:
+    txs = res.data.transactions
+    ids_all = external_ids(txs)
+    for tx, ext in zip(txs, ids_all):
         if tx.amount <= 0:
             continue
         plan = await plan_tx(svc.session, tx)
-        ext = tx_external_id(tx)
         imported = await svc.session.scalar(select(Receipt).where(Receipt.external_id == ext))
         match = imported
         if match is None and plan.kind:
-            match = await find_match(svc.session, tx.amount, tx.date, plan.kind)
+            match = await find_match(
+                svc.session, tx.amount, tx.date, plan.kind, merchant=tx.merchant, batch_ids=set(ids_all)
+            )
         rows.append(
             StatementRow(
                 tx=tx,
@@ -335,7 +367,7 @@ async def list_imports(session: AsyncSession) -> list[ImportInfo]:
             Receipt.import_id,
             func.min(Receipt.created_at),
             func.count(Receipt.id),
-            func.coalesce(func.sum(Receipt.total).filter(Receipt.kind == "expense"), 0),
+            func.coalesce(func.sum(Receipt.total).filter(Receipt.kind == Kind.EXPENSE), 0),
             func.min(Receipt.purchased_at),
             func.max(Receipt.purchased_at),
             func.max(Receipt.chat_id),

@@ -4,16 +4,14 @@ import dayjs from 'dayjs'
 import { useState } from 'react'
 import { api, type ReceiptDetail } from '../api'
 import { categoryOptions } from '../format'
-import { notifyError, notifyOk, useCategories, useUsers } from '../hooks'
+import { notifyError, notifyOk, useCategories, useUsers, invalidateRecords } from '../hooks'
 
 export function ManualExpenseModal({
   opened,
   onClose,
-  initialKind = 'expense',
 }: {
   opened: boolean
   onClose: () => void
-  initialKind?: 'expense' | 'income'
 }) {
   const qc = useQueryClient()
   const cats = useCategories()
@@ -23,7 +21,7 @@ export function ManualExpenseModal({
   const [categoryId, setCategoryId] = useState<string | null>(null)
   const [userId, setUserId] = useState<string | null>(null)
   const [date, setDate] = useState(dayjs().format('YYYY-MM-DDTHH:mm'))
-  const [kind, setKind] = useState<'expense' | 'income'>(initialKind)
+  const [kind, setKind] = useState<'expense' | 'income'>('expense')
   const income = kind === 'income'
 
   const save = useMutation({
@@ -41,7 +39,7 @@ export function ManualExpenseModal({
       }),
     onSuccess: () => {
       notifyOk(income ? 'Доход записан' : 'Трата записана')
-      qc.invalidateQueries()
+      invalidateRecords(qc)
       setName('')
       setAmount('')
       onClose()

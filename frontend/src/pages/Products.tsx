@@ -71,9 +71,9 @@ export default function Products() {
     onError: notifyError,
   })
   const group = useMutation({
-    mutationFn: () => api<{ grouped: number }>('/products/group', { method: 'POST' }),
+    mutationFn: () => api<{ queued: number }>('/products/group', { method: 'POST' }),
     onSuccess: (r) => {
-      notifyOk(r.grouped ? `Сгруппировано названий: ${r.grouped}` : 'Новых названий нет')
+      notifyOk(r.queued ? `Группирую в фоне названий: ${r.queued}. Обновите список через минуту.` : 'Новых названий нет')
       refresh()
     },
     onError: notifyError,

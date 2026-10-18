@@ -6,7 +6,7 @@ import { Link } from 'react-router-dom'
 import { api, type BankImportInfo, type StatementTx } from '../api'
 import { DeleteImportButton } from '../components/DeleteImportButton'
 import { dateOnly, dateTime, money } from '../format'
-import { notifyError, notifyOk, useUsers } from '../hooks'
+import { notifyError, notifyOk, useUsers, invalidateRecords } from '../hooks'
 
 interface Row extends StatementTx {
   selected: boolean
@@ -50,8 +50,8 @@ export default function BankImport() {
         json: {
           transactions: (rows ?? [])
             .filter((r) => r.selected)
-            .map(({ date, amount, merchant, card, owner_id, type, counterparty, choice }) => ({
-              date, amount, merchant, card, owner_id, type, counterparty,
+            .map(({ external_id, date, amount, merchant, card, owner_id, type, counterparty, choice }) => ({
+              external_id, date, amount, merchant, card, owner_id, type, counterparty,
               kind: choice.startsWith('transfer:') ? 'transfer' : choice,
               peer_id: choice.startsWith('transfer:') ? Number(choice.split(':')[1]) : null,
             })),
@@ -62,7 +62,7 @@ export default function BankImport() {
         `Записано: ${r.booked}${r.skipped ? `, уже были: ${r.skipped}` : ''}` +
           (r.marked_transfers ? `. Прошлых переводов внутри семьи найдено: ${r.marked_transfers}` : ''),
       )
-      qc.invalidateQueries()
+      invalidateRecords(qc)
       setRows((rs) => rs?.map((x) => (x.selected ? { ...x, selected: false, imported: true } : x)) ?? null)
     },
     onError: notifyError,
@@ -84,7 +84,7 @@ export default function BankImport() {
       <Title order={2}>Выписка из банка</Title>
       <Text size="sm" c="dimmed">
         Загрузите выписку в CSV или PDF. Нейросеть найдёт в ней расходы и доходы и сравнит с уже записанными: такая же
-        сумма в пределах двух дней считается той же операцией. Ничего не сохраняется, пока вы не нажмёте «Записать».
+        сумма в пределах двух дней из другого источника считается той же операцией. Ничего не сохраняется, пока вы не нажмёте «Записать».
         Владелец определяется по последним цифрам карты, их можно указать в Настройках → Семья.
       </Text>
       <Text size="sm" c="dimmed">

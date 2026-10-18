@@ -33,7 +33,11 @@ def test_extract_json_raises_without_object():
 
 def test_parsed_receipt_tolerates_messy_numbers():
     r = ParsedReceipt.model_validate(
-        {"total": "23,40 €", "purchased_at": "2026-01-15 14:30", "items": [{"name_original": "X", "total": "1,5", "qty": None}]}
+        {
+            "total": "23,40 €",
+            "purchased_at": "2026-01-15 14:30",
+            "items": [{"name_original": "X", "total": "1,5", "qty": None}],
+        }
     )
     assert r.total == 23.40
     assert r.items[0].total == 1.5

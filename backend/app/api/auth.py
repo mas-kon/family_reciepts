@@ -128,11 +128,32 @@ async def login_telegram_redirect(request: Request, session: AsyncSession = Depe
     return response
 
 
+# failed password attempts per client address: {ip: [timestamps]}
+_failures: dict[str, list[float]] = {}
+MAX_FAILURES = 5
+FAILURE_WINDOW = 60.0
+
+
+def _throttled(ip: str) -> bool:
+    now = time.monotonic()
+    recent = [t for t in _failures.get(ip, []) if now - t < FAILURE_WINDOW]
+    _failures[ip] = recent
+    if not recent:
+        _failures.pop(ip, None)
+    return len(recent) >= MAX_FAILURES
+
+
 @router.post("/password")
 async def login_password(data: PasswordAuth, request: Request, response: Response):
     s = get_settings()
-    if not s.web_password or not secrets.compare_digest(data.password, s.web_password):
+    ip = request.client.host if request.client else "?"
+    if _throttled(ip):
+        raise HTTPException(429, "Слишком много попыток, подождите минуту")
+    # bytes: compare_digest raises TypeError on non-ASCII str
+    if not s.web_password or not secrets.compare_digest(data.password.encode(), s.web_password.encode()):
+        _failures.setdefault(ip, []).append(time.monotonic())
         raise HTTPException(403, "Неверный пароль")
+    _failures.pop(ip, None)
     viewer = Viewer(user_id=None, name="Семья", method="password")
     _set_cookie(response, viewer, request)
     return {"user_id": None, "name": viewer.name}

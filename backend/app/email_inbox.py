@@ -17,15 +17,16 @@ from email.message import Message
 from email.utils import parseaddr
 from html.parser import HTMLParser
 
-from sqlalchemy import select
-
+from app.bot.ui import format_receipt, receipt_keyboard
 from app.config import get_settings
-from app.db.models import User
 from app.db.session import session_factory
+from app.family import owner_by_email
 from app.receipts.service import ProcessResult, ReceiptService
 
 log = logging.getLogger(__name__)
 
+MAX_ATTEMPTS = 3
+_failures: dict[str, int] = {}  # Message-ID -> failed attempts
 IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"}
 
 
@@ -100,43 +101,57 @@ def parse_mail(raw: bytes) -> ParsedMail:
     )
 
 
-def fetch_unseen() -> list[bytes]:
-    """Unread messages from the configured folder; they are marked as read by fetching."""
+def _imap(action):
     s = get_settings()
     box = imaplib.IMAP4_SSL(s.imap_host, s.imap_port)
     try:
         box.login(s.imap_user, s.imap_password)
         box.select(s.imap_folder)
-        _, data = box.search(None, "UNSEEN")
-        out = []
-        for num in (data[0] or b"").split()[:20]:
-            _, msg_data = box.fetch(num, "(RFC822)")
-            for item in msg_data:
-                if isinstance(item, tuple):
-                    out.append(item[1])
-        return out
+        return action(box)
     finally:
         try:
             box.logout()
-        except Exception:
-            pass
+        except Exception as e:
+            log.debug("IMAP logout failed: %s", e)
 
 
-async def owner_by_email(session, address: str) -> User | None:
-    for u in await session.scalars(select(User).where(User.emails.is_not(None))):
-        if address in {e.strip().lower() for e in (u.emails or "").split(",") if e.strip()}:
-            return u
-    return None
+def fetch_unseen() -> list[tuple[bytes, bytes]]:
+    """(IMAP number, raw message) of unread mail. PEEK leaves it unread: it is marked as read
+    by mark_seen only after it has been processed, so a failure does not lose the message."""
+
+    def action(box):
+        _, data = box.search(None, "UNSEEN")
+        out = []
+        for num in (data[0] or b"").split()[:20]:
+            _, msg_data = box.fetch(num, "(BODY.PEEK[])")
+            for item in msg_data:
+                if isinstance(item, tuple):
+                    out.append((num, item[1]))
+        return out
+
+    return _imap(action)
 
 
-async def process_mail(svc: ReceiptService, mail: ParsedMail) -> ProcessResult:
+def mark_seen(nums: list[bytes]) -> None:
+    if nums:
+        _imap(lambda box: [box.store(n, "+FLAGS", "\\Seen") for n in nums])
+
+
+async def process_mail(svc: ReceiptService, mail: ParsedMail) -> list[ProcessResult]:
+    """One result per attachment (or one for a mail without attachments)."""
     owner = await owner_by_email(svc.session, mail.sender)
-    ext = f"email:{mail.message_id}"[:300]
-    for ctype, data in mail.attachments:
+    base = f"email:{mail.message_id}"[:290]
+    note = mail.subject or None
+    results = []
+    for i, (ctype, data) in enumerate(mail.attachments):
+        ext = base if i == 0 else f"{base}#{i}"
         if ctype == "application/pdf":
-            return await svc.process_pdf(data, owner, source="email", external_id=ext, note=mail.subject or None)
-        return await svc.process_photo(data, owner, source="email", external_id=ext, note=mail.subject or None)
-    return await svc.process_text_receipt(mail.text, owner, source="email", external_id=ext)
+            results.append(await svc.process_pdf(data, owner, source="email", external_id=ext, note=note))
+        else:
+            results.append(await svc.process_photo(data, owner, source="email", external_id=ext, note=note))
+    if not results:
+        results.append(await svc.process_text_receipt(mail.text, owner, source="email", external_id=base))
+    return results
 
 
 async def poll_inbox(bot=None) -> int:
@@ -150,24 +165,32 @@ async def poll_inbox(bot=None) -> int:
         log.warning("IMAP poll failed: %s", e)
         return 0
     booked = 0
-    for raw in raws:
+    done: list[bytes] = []
+    for num, raw in raws:
         mail = parse_mail(raw)
         async with session_factory()() as session:
             svc = ReceiptService(session)
             try:
-                res = await process_mail(svc, mail)
+                results = await process_mail(svc, mail)
             except Exception:
-                log.exception("failed to process e-mail %s", mail.message_id)
+                _failures[mail.message_id] = _failures.get(mail.message_id, 0) + 1
+                log.exception("failed to process e-mail %s (attempt %d)", mail.message_id, _failures[mail.message_id])
+                if _failures[mail.message_id] >= MAX_ATTEMPTS:
+                    done.append(num)  # give up on a message that never works
                 continue
-            if not res.receipt:
-                continue
-            booked += 1
-            chat = s.notify_chat_id
-            if bot and chat:
-                from app.bot.handlers import format_receipt, receipt_keyboard
-
-                text = "📧 Чек из почты\n" + await format_receipt(session, res.receipt)
-                msg = await bot.send_message(chat, text, reply_markup=receipt_keyboard(res.receipt.id))
-                res.receipt.chat_id, res.receipt.bot_message_id = chat, msg.message_id
-                await session.commit()
+            done.append(num)
+            for res in results:
+                if not res.receipt:
+                    continue
+                booked += 1
+                chat = s.notify_chat_id
+                if bot and chat:
+                    text = "📧 Чек из почты\n" + await format_receipt(session, res.receipt)
+                    msg = await bot.send_message(chat, text, reply_markup=receipt_keyboard(res.receipt.id))
+                    res.receipt.chat_id, res.receipt.bot_message_id = chat, msg.message_id
+                    await session.commit()
+    try:
+        await asyncio.to_thread(mark_seen, done)
+    except Exception as e:
+        log.warning("could not mark e-mails as read: %s", e)
     return booked

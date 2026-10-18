@@ -3,7 +3,7 @@ import { useDisclosure } from '@mantine/hooks'
 import { IconTrash } from '@tabler/icons-react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api'
-import { notifyError, notifyOk } from '../hooks'
+import { notifyError, notifyOk, invalidateRecords } from '../hooks'
 
 /** Deletes every record booked from one bank statement, after a confirmation. */
 export function DeleteImportButton({
@@ -19,7 +19,7 @@ export function DeleteImportButton({
     onSuccess: (r) => {
       notifyOk(`Выписка удалена, записей: ${r.deleted}`)
       ctl.close()
-      qc.invalidateQueries()
+      invalidateRecords(qc)
       onDone?.()
     },
     onError: notifyError,

@@ -1,4 +1,4 @@
-import { Card, Group, Loader, Progress, SimpleGrid, Stack, Table, Text, Title } from '@mantine/core'
+import { Alert, Card, Group, Loader, Progress, SimpleGrid, Stack, Table, Text, Title } from '@mantine/core'
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -71,7 +71,11 @@ export default function Dashboard() {
       </Group>
       <PeriodFilter value={f} onChange={setF} />
 
-      {summary.isLoading || !s ? (
+      {summary.isError ? (
+        <Alert color="red" title="Не удалось загрузить статистику">
+          {(summary.error as Error).message}
+        </Alert>
+      ) : summary.isLoading || !s ? (
         <Loader />
       ) : (
         <>

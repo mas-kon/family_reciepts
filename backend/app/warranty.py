@@ -7,10 +7,11 @@ from datetime import timedelta
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.bot.ui import receipt_keyboard
+from app.clock import now_local
 from app.config import get_settings
 from app.db.models import Item, Receipt
 from app.db.session import session_factory
-from app.receipts.service import now_local
 
 log = logging.getLogger(__name__)
 
@@ -37,8 +38,6 @@ async def remind(bot) -> int:
     sent = 0
     if not (bot and chat):
         return 0
-    from app.bot.handlers import receipt_keyboard
-
     async with session_factory()() as session:
         for item, receipt in await due_items(session, s.warranty_remind_days):
             bought = f"{receipt.purchased_at:%d.%m.%Y}" if receipt.purchased_at else "—"

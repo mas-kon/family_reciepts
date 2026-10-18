@@ -4,13 +4,15 @@ import io
 from datetime import date, timedelta
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from typing import ClassVar
 
 import pytest
 from sqlalchemy import func, select
 
+from app.clock import now_local
 from app.config import get_settings
 from app.db.models import Category, Item, ProductAlias, Receipt, User
-from app.receipts.service import ReceiptService, add_months, now_local
+from app.receipts.service import ReceiptService, add_months
 from tests.conftest import LIDL, FakeLLM, receipt_image
 
 
@@ -56,9 +58,19 @@ def test_add_months():
 
 async def test_warranty_from_receipt_and_reminder(session, monkeypatch):
     tv = {
-        "is_receipt": True, "store": "Technopolis", "purchased_at": "2024-11-20T12:00", "total": 500,
-        "items": [{"name_original": "TV SAMSUNG 55", "name_ru": "Телевизор", "total": 500,
-                   "category": "Электроника", "warranty_months": 24}],
+        "is_receipt": True,
+        "store": "Technopolis",
+        "purchased_at": "2024-11-20T12:00",
+        "total": 500,
+        "items": [
+            {
+                "name_original": "TV SAMSUNG 55",
+                "name_ru": "Телевизор",
+                "total": 500,
+                "category": "Электроника",
+                "warranty_months": 24,
+            }
+        ],
     }
     r = (await ReceiptService(session, FakeLLM(tv)).process_photo(receipt_image(), None)).receipt
     assert r.items[0].warranty_until == date(2026, 11, 20)
@@ -69,7 +81,7 @@ async def test_warranty_from_receipt_and_reminder(session, monkeypatch):
     assert [i.name_original for i, _ in due] == ["TV SAMSUNG 55"]
 
     class Bot:
-        sent = []
+        sent: ClassVar[list] = []
 
         async def send_message(self, chat, text, **kw):
             self.sent.append(text)
@@ -126,7 +138,9 @@ def test_parse_mail_html_body():
     msg["Subject"] = "Ваш заказ в Glovo"
     msg["From"] = "Anna <Anna@Example.com>"
     msg["Message-ID"] = "<abc@glovo>"
-    msg.attach(MIMEText("<html><style>x{}</style><table><tr><td>Пицца</td><td>12.50 €</td></tr></table></html>", "html"))
+    msg.attach(
+        MIMEText("<html><style>x{}</style><table><tr><td>Пицца</td><td>12.50 €</td></tr></table></html>", "html")
+    )
     m = parse_mail(msg.as_bytes())
     assert m.sender == "anna@example.com" and m.message_id == "<abc@glovo>"
     assert "Пицца | 12.50 €" in m.text and "x{}" not in m.text
@@ -138,11 +152,11 @@ async def test_mail_owner_by_address(session):
     session.add(User(name="Анна", emails="anna@example.com,anna.work@company.bg"))
     await session.commit()
     mail = ParsedMail(message_id="<m1>", sender="anna@example.com", subject="Заказ", text="Пицца 12.50")
-    r = (await process_mail(ReceiptService(session, FakeLLM(LIDL)), mail)).receipt
+    r = (await process_mail(ReceiptService(session, FakeLLM(LIDL)), mail))[0].receipt
     assert (await session.get(User, r.user_id)).name == "Анна" and r.external_id == "email:<m1>"
     # any of the person's addresses
     mail = ParsedMail(message_id="<m2>", sender="anna.work@company.bg", subject="Заказ", text="Кафе 4.20")
-    r = (await process_mail(ReceiptService(session, FakeLLM(LIDL)), mail)).receipt
+    r = (await process_mail(ReceiptService(session, FakeLLM(LIDL)), mail))[0].receipt
     assert (await session.get(User, r.user_id)).name == "Анна"
 
 
@@ -179,10 +193,18 @@ async def test_bank_message_books_for_card_owner(session):
 async def test_bank_message_matches_existing_receipt(session):
     from app.bank import handle_bank_text
 
-    svc = ReceiptService(session, FakeLLM(LIDL, bank={"transactions": [
-        {"date": "2026-01-16T09:00", "amount": 23.40, "merchant": "Lidl"},
-        {"date": "2026-01-16T09:00", "amount": 100, "merchant": "Salary", "is_expense": False},
-    ]}))
+    svc = ReceiptService(
+        session,
+        FakeLLM(
+            LIDL,
+            bank={
+                "transactions": [
+                    {"date": "2026-01-16T09:00", "amount": 23.40, "merchant": "Lidl"},
+                    {"date": "2026-01-16T09:00", "amount": 100, "merchant": "Salary", "type": "own"},
+                ]
+            },
+        ),
+    )
     photo = (await svc.process_photo(receipt_image(), None)).receipt  # 23.40 on 2026-01-15
     results = await handle_bank_text(svc, "...", None)
     assert len(results) == 1 and results[0].match.id == photo.id
@@ -200,10 +222,12 @@ def test_statement_csv_is_normalised():
 async def test_statement_analyse_and_import(client, session):
     from app.api import ai
 
-    statement = {"transactions": [
-        {"date": "2026-10-10T10:00", "amount": 7.2, "merchant": "Billa", "card": "9999"},
-        {"date": "2026-01-15T14:00", "amount": 23.40, "merchant": "Lidl"},
-    ]}
+    statement = {
+        "transactions": [
+            {"date": "2026-10-10T10:00", "amount": 7.2, "merchant": "Billa", "card": "9999"},
+            {"date": "2026-01-15T14:00", "amount": 23.40, "merchant": "Lidl"},
+        ]
+    }
     await ReceiptService(session, FakeLLM(LIDL)).process_photo(receipt_image(), None)
 
     orig = ai.ReceiptService.__init__
@@ -259,8 +283,9 @@ def _opus(seconds: float = 1.0) -> bytes:
     st = out.add_stream("libopus", rate=48000)
     st.layout = "mono"
     n = int(48000 * seconds)
-    fr = av.AudioFrame.from_ndarray((np.sin(np.linspace(0, 400, n)) * 8000).astype("int16").reshape(1, -1),
-                                    format="s16", layout="mono")
+    fr = av.AudioFrame.from_ndarray(
+        (np.sin(np.linspace(0, 400, n)) * 8000).astype("int16").reshape(1, -1), format="s16", layout="mono"
+    )
     fr.sample_rate = 48000
     for p in st.encode(fr):
         out.mux(p)
@@ -282,8 +307,17 @@ async def test_voice_books_for_family_member(session):
 
     session.add(User(name="Маша"))
     await session.commit()
-    llm = FakeLLM(voice={"transcript": "Маше на кино пятнадцать", "who": "Маша", "name": "кино", "amount": 15},
-                  manual={"name": "Кино", "amount": 15, "category": "Развлечения"})
+    llm = FakeLLM(
+        voice={
+            "has_speech": True,
+            "is_expense": True,
+            "transcript": "Маше на кино пятнадцать",
+            "who": "Маша",
+            "name": "кино",
+            "amount": 15,
+        },
+        manual={"name": "Кино", "amount": 15, "category": "Развлечения"},
+    )
     res = await handle_voice(ReceiptService(session, llm), b"wav", None)
     r = res.receipt
     assert r.source == "voice" and r.total == 15 and (await session.get(User, r.user_id)).name == "Маша"
@@ -299,8 +333,10 @@ async def test_voice_books_for_family_member(session):
 async def test_product_grouping_merge_and_split(client, session):
     from app import products
 
-    llm = FakeLLM([LIDL, {**LIDL, "items": [{**LIDL["items"][0], "name_original": "МЛЯКО ПРЯСНО 3% 1Л"}]}],
-                  products={"прясно мляко 3% 1л": "Молоко 3% 1 л", "мляко прясно 3% 1л": "Молоко 3% 1 л"})
+    llm = FakeLLM(
+        [LIDL, {**LIDL, "items": [{**LIDL["items"][0], "name_original": "МЛЯКО ПРЯСНО 3% 1Л"}]}],
+        products={"прясно мляко 3% 1л": "Молоко 3% 1 л", "мляко прясно 3% 1л": "Молоко 3% 1 л"},
+    )
     svc = ReceiptService(session, llm, auto_products=False)
     await svc.process_photo(receipt_image(), None)
     await svc.process_photo(receipt_image(), None)
@@ -327,10 +363,12 @@ async def test_ask_runs_tools_and_answers(session):
     from app.ask import answer
 
     await ReceiptService(session, FakeLLM(LIDL)).process_photo(receipt_image(), None)
-    llm = FakeLLM(tool_script=[
-        ("call", "search_purchases", {"query": "мляко"}),
-        ("answer", "На молоко ушло 2.40 €."),
-    ])
+    llm = FakeLLM(
+        tool_script=[
+            ("call", "search_purchases", {"query": "мляко"}),
+            ("answer", "На молоко ушло 2.40 €."),
+        ]
+    )
     res = await answer(session, "сколько ушло на молоко?", llm=llm)
     assert res["answer"] == "На молоко ушло 2.40 €." and res["tools"] == ["search_purchases"]
     tool_result = llm.tool_messages[-1]
@@ -395,12 +433,30 @@ async def test_family_transfer_is_not_spending(session, client):
     svc = ReceiptService(session, FakeLLM(None))
     when = dt.datetime(2026, 10, 5, 12)
     await svc.book_single(name="Хлеб", amount=10, category_id=None, user_id=None, source="manual", purchased_at=when)
-    t1 = await svc.book_single(name="Перевод: Vera Maslennikova", amount=4, category_id=None, user_id=None,
-                               source="bank", purchased_at=when, counterparty="Vera Maslennikova")
-    t2 = await svc.book_single(name="Перевод: Vera Maslennikova", amount=3, category_id=None, user_id=None,
-                               source="bank", purchased_at=when, counterparty="Vera Maslennikova")
-    sal = (await client.post("/api/receipts/manual", json={
-        "name": "Зарплата", "amount": 1500, "kind": "income", "purchased_at": "2026-10-05T09:00:00"})).json()
+    t1 = await svc.book_single(
+        name="Перевод: Vera Maslennikova",
+        amount=4,
+        category_id=None,
+        user_id=None,
+        source="bank",
+        purchased_at=when,
+        counterparty="Vera Maslennikova",
+    )
+    t2 = await svc.book_single(
+        name="Перевод: Vera Maslennikova",
+        amount=3,
+        category_id=None,
+        user_id=None,
+        source="bank",
+        purchased_at=when,
+        counterparty="Vera Maslennikova",
+    )
+    sal = (
+        await client.post(
+            "/api/receipts/manual",
+            json={"name": "Зарплата", "amount": 1500, "kind": "income", "purchased_at": "2026-10-05T09:00:00"},
+        )
+    ).json()
     assert sal["kind"] == "income"
 
     period = "date_from=2026-10-01&date_to=2026-10-31"
@@ -408,8 +464,11 @@ async def test_family_transfer_is_not_spending(session, client):
     assert s["total"] == 17 and s["income"]["total"] == 1500
 
     # one record marked with "remember" marks every transfer to this name
-    r = (await client.patch(f"/api/receipts/{t1.id}", json={"kind": "transfer", "peer_user_id": vera.id,
-                                                           "remember_peer": True})).json()
+    r = (
+        await client.patch(
+            f"/api/receipts/{t1.id}", json={"kind": "transfer", "peer_user_id": vera.id, "remember_peer": True}
+        )
+    ).json()
     assert r["kind"] == "transfer" and r["peer_name"] == "Вера"
     session.expunge_all()
     assert (await session.get(Receipt, t2.id)).kind == "transfer"
@@ -434,8 +493,15 @@ class _Usage:
 class _Resp:
     def __init__(self, provider, cost, upstream, byok):
         self.provider = provider
-        self.usage = _Usage({"prompt_tokens": 100, "completion_tokens": 20, "cost": cost, "is_byok": byok,
-                             "cost_details": {"upstream_inference_cost": upstream}})
+        self.usage = _Usage(
+            {
+                "prompt_tokens": 100,
+                "completion_tokens": 20,
+                "cost": cost,
+                "is_byok": byok,
+                "cost_details": {"upstream_inference_cost": upstream},
+            }
+        )
 
 
 async def test_llm_usage_log_and_report(session, client):
@@ -457,7 +523,7 @@ async def test_low_balance_warns_once(monkeypatch):
     from app.llm import usage
 
     class Bot:
-        sent: list = []
+        sent: ClassVar[list] = []
 
         async def send_message(self, chat, text):
             self.sent.append(text)
@@ -465,8 +531,14 @@ async def test_low_balance_warns_once(monkeypatch):
     state = {"balance": 0.4}
 
     async def fake_balances(fresh=False):
-        return [{"provider": "OpenRouter", "currency": "USD", "balance": state["balance"],
-                 "key": {"limit": 5, "limit_remaining": 4.9}}]
+        return [
+            {
+                "provider": "OpenRouter",
+                "currency": "USD",
+                "balance": state["balance"],
+                "key": {"limit": 5, "limit_remaining": 4.9},
+            }
+        ]
 
     monkeypatch.setattr(usage, "balances", fake_balances)
     monkeypatch.setattr(get_settings(), "report_chat_id", -100)

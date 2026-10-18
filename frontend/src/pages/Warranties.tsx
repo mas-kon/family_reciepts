@@ -1,4 +1,4 @@
-import { Anchor, Badge, Group, Loader, Stack, Switch, Table, Text, Title } from '@mantine/core'
+import { Alert, Anchor, Badge, Group, Loader, Stack, Switch, Table, Text, Title } from '@mantine/core'
 import { IconPhoto } from '@tabler/icons-react'
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
@@ -31,7 +31,11 @@ export default function Warranties() {
         поправить в позиции чека.
       </Text>
       <Switch label="Показать закончившиеся" checked={expired} onChange={(e) => setExpired(e.currentTarget.checked)} />
-      {list.isLoading ? (
+      {list.isError ? (
+        <Alert color="red" title="Не удалось загрузить гарантии">
+          {(list.error as Error).message}
+        </Alert>
+      ) : list.isLoading ? (
         <Loader />
       ) : !list.data?.length ? (
         <Text c="dimmed">Вещей на гарантии пока нет.</Text>

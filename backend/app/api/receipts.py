@@ -1,19 +1,22 @@
 import csv
 import io
 from datetime import date, datetime, timedelta
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import aliased
+from sqlalchemy.orm import aliased, noload
 
 from app.api.deps import Viewer, current_viewer
+from app.clock import now_local
+from app.constants import INCOME_DEFAULT, NO_DESCRIPTION, Kind
 from app.db.models import Category, Item, Receipt, User
 from app.db.session import get_session, icontains
 from app.receipts.money import round2
-from app.receipts.service import NO_DESCRIPTION, ReceiptService
+from app.receipts.service import ReceiptService
 from app.receipts.text import normalize_name
 
 router = APIRouter(prefix="/api", tags=["receipts"], dependencies=[Depends(current_viewer)])
@@ -69,7 +72,7 @@ class ReceiptPatch(BaseModel):
     store: str | None = None
     purchased_at: datetime | None = None
     total: float | None = None
-    status: str | None = None
+    status: Literal["ok", "needs_review", "pending", "failed"] | None = None
     note: str | None = None
     user_id: int | None = None
     kind: str | None = Field(None, pattern="^(expense|income|transfer)$")
@@ -122,30 +125,34 @@ KIND_LABEL = {"expense": "Расход", "income": "Доход", "transfer": "В
 # ---------- helpers ----------
 
 
-def to_out(r: Receipt) -> dict:
-    first = r.items[0] if r.items else None
-    title = r.store or r.note or (first.name_ru or first.name_original if first else None) or "Чек"
-    return dict(
-        id=r.id,
-        title=title,
-        source=r.source,
-        store=r.store,
-        purchased_at=r.purchased_at,
-        total=r.total,
-        status=r.status,
-        review_reason=r.review_reason,
-        user_id=r.user_id,
-        user_name=r.user.name if r.user else None,
-        items_count=len(r.items),
-        has_image=bool(r.image_path),
-        note=r.note,
-        import_id=r.import_id,
-        kind=r.kind,
-        counterparty=r.counterparty,
-        peer_user_id=r.peer_user_id,
-        peer_name=r.peer.name if r.peer else None,
-        created_at=r.created_at,
-    )
+def to_out(r: Receipt, items_count: int | None = None, first_name: str | None = None) -> dict:
+    """A list row passes the count and the first line's name: the items are not loaded for it."""
+    if items_count is None:
+        first = r.items[0] if r.items else None
+        first_name = first.name_ru or first.name_original if first else None
+        items_count = len(r.items)
+    title = r.store or r.note or first_name or "Чек"
+    return {
+        "id": r.id,
+        "title": title,
+        "source": r.source,
+        "store": r.store,
+        "purchased_at": r.purchased_at,
+        "total": r.total,
+        "status": r.status,
+        "review_reason": r.review_reason,
+        "user_id": r.user_id,
+        "user_name": r.user.name if r.user else None,
+        "items_count": items_count,
+        "has_image": bool(r.image_path),
+        "note": r.note,
+        "import_id": r.import_id,
+        "kind": r.kind,
+        "counterparty": r.counterparty,
+        "peer_user_id": r.peer_user_id,
+        "peer_name": r.peer.name if r.peer else None,
+        "created_at": r.created_at,
+    }
 
 
 def to_detail(r: Receipt) -> ReceiptDetail:
@@ -163,6 +170,12 @@ async def load_receipt(session: AsyncSession, rid: int) -> Receipt:
     if not r:
         raise HTTPException(404, "Чек не найден")
     return r
+
+
+async def ensure_exists(session: AsyncSession, model, obj_id: int | None, what: str) -> None:
+    """404/400 instead of a foreign key error (500) for an id that does not exist."""
+    if obj_id is not None and await session.get(model, obj_id) is None:
+        raise HTTPException(400, f"{what}: такого нет")
 
 
 def end_of(d: date | None) -> datetime | None:
@@ -229,14 +242,37 @@ async def list_receipts(
             )
         )
     total = await session.scalar(select(func.count(Receipt.id)).where(*conds))
-    rows = await session.scalars(
-        select(Receipt)
-        .where(*conds)
-        .order_by(Receipt.purchased_at.desc().nulls_first(), Receipt.id.desc())
-        .offset((page - 1) * page_size)
-        .limit(page_size)
+    rows = list(
+        (
+            await session.scalars(
+                select(Receipt)
+                .options(noload(Receipt.items))  # a list needs only the count and one name
+                .where(*conds)
+                .order_by(Receipt.purchased_at.desc().nulls_first(), Receipt.id.desc())
+                .offset((page - 1) * page_size)
+                .limit(page_size)
+            )
+        ).unique()
     )
-    return {"total": total, "items": [ReceiptOut(**to_out(r)) for r in rows.unique()]}
+    ids = [r.id for r in rows]
+    counts = {
+        rid: n
+        for rid, n in await session.execute(
+            select(Item.receipt_id, func.count()).where(Item.receipt_id.in_(ids)).group_by(Item.receipt_id)
+        )
+    }
+    first_names = {
+        rid: name_ru or name_original
+        for rid, name_ru, name_original in await session.execute(
+            select(Item.receipt_id, Item.name_ru, Item.name_original).where(
+                Item.receipt_id.in_(ids), Item.position == 0
+            )
+        )
+    }
+    return {
+        "total": total,
+        "items": [ReceiptOut(**to_out(r, counts.get(r.id, 0), first_names.get(r.id))) for r in rows],
+    }
 
 
 @router.get("/receipts/{rid}", response_model=ReceiptDetail)
@@ -258,8 +294,7 @@ async def get_image(rid: int, session: AsyncSession = Depends(get_session)):
 async def patch_receipt(rid: int, data: ReceiptPatch, session: AsyncSession = Depends(get_session)):
     r = await load_receipt(session, rid)
     fields = data.model_dump(exclude_unset=True)
-    if "status" in fields and fields["status"] not in {"ok", "needs_review", "pending", "failed"}:
-        raise HTTPException(400, "Неверный статус")
+    await ensure_exists(session, User, fields.get("user_id"), "Член семьи")
     note = fields.pop("note", None)
     note_given = "note" in data.model_fields_set and (note or None) != r.note
     kind = fields.pop("kind", None)
@@ -268,7 +303,7 @@ async def patch_receipt(rid: int, data: ReceiptPatch, session: AsyncSession = De
     svc = ReceiptService(session)
     if kind:
         peer = await session.get(User, peer_id) if peer_id else None
-        if kind == "transfer" and peer_id and not peer:
+        if kind == Kind.TRANSFER and peer_id and not peer:
             raise HTTPException(404, "Член семьи не найден")
         await svc.set_kind(r, kind, peer)
         if remember and peer and r.counterparty:
@@ -306,10 +341,12 @@ async def add_manual(
     session: AsyncSession = Depends(get_session),
     viewer: Viewer = Depends(current_viewer),
 ):
+    await ensure_exists(session, Category, data.category_id, "Категория")
+    await ensure_exists(session, User, data.user_id, "Член семьи")
     svc = ReceiptService(session)
-    name = (data.name or "").strip() or ("Поступление" if data.kind == "income" else NO_DESCRIPTION)
+    name = (data.name or "").strip() or (INCOME_DEFAULT if data.kind == Kind.INCOME else NO_DESCRIPTION)
     category_id = data.category_id
-    if data.kind == "income" and category_id is None:
+    if data.kind == Kind.INCOME and category_id is None:
         category_id = await svc.income_category(name)
     r = await svc.book_single(
         name=name,
@@ -329,6 +366,7 @@ async def add_manual(
 
 @router.post("/receipts/{rid}/items", response_model=ReceiptDetail)
 async def add_item(rid: int, data: ItemIn, session: AsyncSession = Depends(get_session)):
+    await ensure_exists(session, Category, data.category_id, "Категория")
     r = await load_receipt(session, rid)
     pos = max((i.position for i in r.items), default=-1) + 1
     session.add(
@@ -354,6 +392,7 @@ async def patch_item(item_id: int, data: ItemPatch, session: AsyncSession = Depe
     if not item:
         raise HTTPException(404, "Позиция не найдена")
     fields = data.model_dump(exclude_unset=True, exclude={"remember"})
+    await ensure_exists(session, Category, fields.get("category_id"), "Категория")
     category_changed = "category_id" in fields and fields["category_id"] != item.category_id
     for k, v in fields.items():
         setattr(item, k, v)
@@ -362,9 +401,7 @@ async def patch_item(item_id: int, data: ItemPatch, session: AsyncSession = Depe
     if "warranty_until" in fields:
         item.warranty_notified = False
     if category_changed and item.category_id and data.remember:
-        await ReceiptService(session).remember_category(
-            item.name_normalized, item.category_id, apply_existing=True
-        )
+        await ReceiptService(session).remember_category(item.name_normalized, item.category_id, apply_existing=True)
     await session.commit()
     return to_detail(await load_receipt(session, item.receipt_id))
 
@@ -405,11 +442,24 @@ async def export_csv(
     rows = (await session.execute(q)).unique().all()
 
     buf = io.StringIO()
-    buf.write("﻿")  # BOM so Excel detects UTF-8
+    buf.write("\ufeff")  # BOM so Excel detects UTF-8
     w = csv.writer(buf, delimiter=";")
     w.writerow(
-        ["Дата", "Магазин", "Кто", "Позиция (оригинал)", "Позиция", "Кол-во", "Цена",
-         "Сумма, €", "Категория", "Подкатегория", "Чек №", "Источник", "Тип"]
+        [
+            "Дата",
+            "Магазин",
+            "Кто",
+            "Позиция (оригинал)",
+            "Позиция",
+            "Кол-во",
+            "Цена",
+            "Сумма, €",
+            "Категория",
+            "Подкатегория",
+            "Чек №",
+            "Источник",
+            "Тип",
+        ]
     )
     for item, r, user_name, cat, parent in rows:
         w.writerow(
@@ -430,9 +480,9 @@ async def export_csv(
             ]
         )
     buf.seek(0)
-    name = f"expenses-{date.today():%Y%m%d}.csv"
-    return StreamingResponse(
-        iter([buf.getvalue()]),
+    name = f"expenses-{now_local():%Y%m%d}.csv"
+    return Response(
+        buf.getvalue(),
         media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": f'attachment; filename="{name}"'},
     )

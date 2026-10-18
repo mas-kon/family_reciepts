@@ -22,13 +22,19 @@ os.environ.update(
     IMAP_HOST="",
 )
 
-from PIL import Image  # noqa: E402
+from PIL import Image
 
-from app.db import session as db_session  # noqa: E402
-from app.db.models import Base  # noqa: E402
-from app.db.seed import seed_categories  # noqa: E402
-from app.llm.client import LLMError, LLMResult  # noqa: E402
-from app.llm.schema import ParsedBank, ParsedManual, ParsedProducts, ParsedReceipt, ParsedVoice  # noqa: E402
+from app.db import session as db_session
+from app.db.models import Base
+from app.db.seed import seed_categories
+from app.llm.client import LLMError, LLMResult
+from app.llm.schema import (
+    ParsedBank,
+    ParsedManual,
+    ParsedProducts,
+    ParsedReceipt,
+    ParsedVoice,
+)
 
 
 @pytest.fixture
@@ -149,13 +155,35 @@ LIDL = {
     "purchased_at": "2026-01-15T14:30",
     "total": 23.40,
     "items": [
-        {"name_original": "ПРЯСНО МЛЯКО 3% 1Л", "name_ru": "Молоко 3% 1 л", "qty": 2, "unit_price": 1.20,
-         "total": 2.40, "category": "Продукты / Молочные продукты и яйца"},
-        {"name_original": "БАНАНИ", "name_ru": "Бананы", "qty": 1.25, "unit_price": 1.60,
-         "total": 2.00, "category": "Овощи и фрукты"},
-        {"name_original": "ПРАХ ЗА ПРАНЕ", "name_ru": "Стиральный порошок", "qty": 1,
-         "total": 20.00, "category": "Хозяйство / Бытовая химия"},
-        {"name_original": "ОТСТЪПКА", "name_ru": "Скидка", "qty": 1,
-         "total": -1.00, "category": "Хозяйство / Бытовая химия"},
+        {
+            "name_original": "ПРЯСНО МЛЯКО 3% 1Л",
+            "name_ru": "Молоко 3% 1 л",
+            "qty": 2,
+            "unit_price": 1.20,
+            "total": 2.40,
+            "category": "Продукты / Молочные продукты и яйца",
+        },
+        {
+            "name_original": "БАНАНИ",
+            "name_ru": "Бананы",
+            "qty": 1.25,
+            "unit_price": 1.60,
+            "total": 2.00,
+            "category": "Овощи и фрукты",
+        },
+        {
+            "name_original": "ПРАХ ЗА ПРАНЕ",
+            "name_ru": "Стиральный порошок",
+            "qty": 1,
+            "total": 20.00,
+            "category": "Хозяйство / Бытовая химия",
+        },
+        {
+            "name_original": "ОТСТЪПКА",
+            "name_ru": "Скидка",
+            "qty": 1,
+            "total": -1.00,
+            "category": "Хозяйство / Бытовая химия",
+        },
     ],
 }

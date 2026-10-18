@@ -1,22 +1,36 @@
 """Monthly report: a PNG chart plus a short text summary."""
 
+import asyncio
+import html
 import io
+import json
 import logging
-from datetime import date
 
-import matplotlib
+from sqlalchemy.ext.asyncio import AsyncSession
 
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt  # noqa: E402
-from sqlalchemy.ext.asyncio import AsyncSession  # noqa: E402
-
-from app.stats import budgets_status, month_bounds, prev_month, summary  # noqa: E402
+from app.clock import now_local
+from app.config import get_settings
+from app.llm.client import LLMError, get_llm
+from app.llm.prompt import COMMENT_SYSTEM
+from app.stats import budgets_status, month_bounds, prev_month, summary
 
 log = logging.getLogger(__name__)
 
+SUMMARY_KEYS = ("total", "receipts", "by_category", "by_subcategory", "by_user", "by_store", "top_items", "income")
+
 MONTHS_RU = [
-    "январь", "февраль", "март", "апрель", "май", "июнь",
-    "июль", "август", "сентябрь", "октябрь", "ноябрь", "декабрь",
+    "январь",
+    "февраль",
+    "март",
+    "апрель",
+    "май",
+    "июнь",
+    "июль",
+    "август",
+    "сентябрь",
+    "октябрь",
+    "ноябрь",
+    "декабрь",
 ]
 
 
@@ -26,8 +40,14 @@ def month_title(month: str) -> str:
 
 
 def render_chart(month: str, by_category: list[dict]) -> bytes:
+    # matplotlib is heavy: imported on first use. Figure (not pyplot) keeps no global state.
+    from matplotlib.backends.backend_agg import FigureCanvasAgg
+    from matplotlib.figure import Figure
+
     rows = [r for r in by_category if r["amount"] > 0][:10][::-1]
-    fig, ax = plt.subplots(figsize=(8, max(3, 0.45 * len(rows) + 1.2)), dpi=120)
+    fig = Figure(figsize=(8, max(3, 0.45 * len(rows) + 1.2)), dpi=120)
+    FigureCanvasAgg(fig)
+    ax = fig.subplots()
     names = [r["name"] or "Без категории" for r in rows]
     values = [r["amount"] for r in rows]
     bars = ax.barh(names, values, color="#3b82f6")
@@ -39,29 +59,24 @@ def render_chart(month: str, by_category: list[dict]) -> bytes:
     fig.tight_layout()
     buf = io.BytesIO()
     fig.savefig(buf, format="png")
-    plt.close(fig)
     return buf.getvalue()
 
 
 async def month_comment(session: AsyncSession, month: str, cur: dict, prev: dict, llm=None) -> str | None:
     """2–4 sentences from the LLM about what changed this month. None if the LLM is unavailable."""
-    import html
-    import json
-
-    from app.llm.client import LLMClient, LLMError
-    from app.llm.prompt import COMMENT_SYSTEM
-    from app.config import get_settings
-
     if not cur["total"]:
         return None
-    pick = lambda s: {k: s[k] for k in ("total", "receipts", "by_category", "by_subcategory", "by_user", "by_store", "top_items", "income")}  # noqa: E731
+
+    def pick(s: dict) -> dict:
+        return {k: s[k] for k in SUMMARY_KEYS}
+
     data = {
         "month": month_title(month),
         "this_month": pick(cur),
         "previous_month": pick(prev),
         "budgets": await budgets_status(session, month),
     }
-    llm = llm or LLMClient()
+    llm = llm or get_llm()
     try:
         text, _ = await llm.complete_text(
             [
@@ -73,7 +88,7 @@ async def month_comment(session: AsyncSession, month: str, cur: dict, prev: dict
     except LLMError as e:
         log.warning("month comment failed: %s", e)
         return None
-    return html.escape(text.strip())[:900]
+    return html.escape(text.strip()[:900])
 
 
 async def build_monthly_report(
@@ -104,9 +119,9 @@ async def build_monthly_report(
         lines.append("")
         lines.append("Магазины: " + ", ".join(s["store"] for s in cur["by_store"][:5]))
 
-    chart = render_chart(month, cur["by_category"]) if cur["by_category"] else None
+    chart = await asyncio.to_thread(render_chart, month, cur["by_category"]) if cur["by_category"] else None
     return "\n".join(lines), chart
 
 
 def last_month() -> str:
-    return prev_month(date.today())
+    return prev_month(now_local().date())

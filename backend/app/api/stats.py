@@ -8,10 +8,10 @@ from app.api.deps import current_viewer
 from app.api.receipts import end_of, start_of
 from app.config import get_settings
 from app.db.models import Item, ProductAlias, Receipt
-from app.products import PRODUCT_KEY, with_alias
 from app.db.session import get_session, icontains
+from app.products import with_alias
 from app.scheduler import send_monthly_report
-from app.stats import monthly, summary
+from app.stats import PRODUCT_KEY, monthly, summary
 
 router = APIRouter(prefix="/api", tags=["stats"], dependencies=[Depends(current_viewer)])
 
@@ -44,25 +44,25 @@ async def products(
     """Products for price tracking. Lines grouped under one product (Цены → Объединить or the
     automatic grouping) count as one product; `key` identifies it in the other endpoints."""
     query = (
-        with_alias(select(
-            PRODUCT_KEY.label("key"),
-            func.coalesce(func.max(ProductAlias.product), func.max(Item.name_ru)).label("name"),
-            func.max(Item.name_original).label("name_original"),
-            func.count(func.distinct(Item.name_normalized)).label("variants"),
-            func.count(Item.id).label("count"),
-            func.min(Item.unit_price).label("min_price"),
-            func.max(Item.unit_price).label("max_price"),
-            func.max(Receipt.purchased_at).label("last_date"),
-        ).join(Receipt, Item.receipt_id == Receipt.id))
+        with_alias(
+            select(
+                PRODUCT_KEY.label("key"),
+                func.coalesce(func.max(ProductAlias.product), func.max(Item.name_ru)).label("name"),
+                func.max(Item.name_original).label("name_original"),
+                func.count(func.distinct(Item.name_normalized)).label("variants"),
+                func.count(Item.id).label("count"),
+                func.min(Item.unit_price).label("min_price"),
+                func.max(Item.unit_price).label("max_price"),
+                func.max(Receipt.purchased_at).label("last_date"),
+            ).join(Receipt, Item.receipt_id == Receipt.id)
+        )
         .where(Item.total > 0, Receipt.source.in_(("photo", "email")))
         .group_by(PRODUCT_KEY)
         .order_by(func.count(Item.id).desc(), func.max(Receipt.purchased_at).desc())
         .limit(limit)
     )
     if q:
-        query = query.where(
-            icontains(Item.name_original, q) | icontains(Item.name_ru, q) | icontains(PRODUCT_KEY, q)
-        )
+        query = query.where(icontains(Item.name_original, q) | icontains(Item.name_ru, q) | icontains(PRODUCT_KEY, q))
     rows = await session.execute(query)
     return [
         {
@@ -77,25 +77,24 @@ async def products(
 @router.get("/products/prices")
 async def product_prices(key: str, session: AsyncSession = Depends(get_session)):
     rows = await session.execute(
-        with_alias(select(
-            Receipt.id.label("receipt_id"),
-            Receipt.purchased_at,
-            Receipt.store,
-            Item.name_original,
-            Item.qty,
-            Item.unit_price.label("unit_price_eur"),
-        ).join(Receipt, Item.receipt_id == Receipt.id))
+        with_alias(
+            select(
+                Receipt.id.label("receipt_id"),
+                Receipt.purchased_at,
+                Receipt.store,
+                Item.name_original,
+                Item.qty,
+                Item.unit_price.label("unit_price_eur"),
+            ).join(Receipt, Item.receipt_id == Receipt.id)
+        )
         .where(PRODUCT_KEY == key, Item.total > 0)
         .order_by(Receipt.purchased_at)
     )
-    return [
-        {**r._mapping, "unit_price_eur": round(r.unit_price_eur, 2) if r.unit_price_eur else None}
-        for r in rows
-    ]
+    return [{**r._mapping, "unit_price_eur": round(r.unit_price_eur, 2) if r.unit_price_eur else None} for r in rows]
 
 
 @router.post("/reports/send")
-async def send_report(request: Request, month: str | None = None):
+async def send_report(request: Request, month: str | None = Query(None, pattern=r"^\d{4}-(0[1-9]|1[0-2])$")):
     bot = getattr(request.app.state, "bot", None)
     if not bot or not get_settings().notify_chat_id:
         raise HTTPException(400, "Бот не запущен или не задан чат для отчётов")

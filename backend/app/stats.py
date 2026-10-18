@@ -6,10 +6,21 @@ inside the family are counted nowhere (they are only moved money)."""
 from datetime import date, datetime, timedelta
 
 from sqlalchemy import Select, and_, func, select
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
-from app.db.models import Budget, BudgetAlert, Category, Item, ProductAlias, Receipt, User
+from app.clock import now_local
+from app.constants import Kind
+from app.db.models import (
+    Budget,
+    BudgetAlert,
+    Category,
+    Item,
+    ProductAlias,
+    Receipt,
+    User,
+)
 
 EUR = Item.total
 # product key: canonical product if grouped (app.products), otherwise the line's own name
@@ -34,7 +45,7 @@ def _filtered(
     date_from: datetime | None,
     date_to: datetime | None,
     user_id: int | None = None,
-    kind: str = "expense",
+    kind: Kind = Kind.EXPENSE,
 ) -> Select:
     conds = [Receipt.status != "failed", Receipt.kind == kind]
     if date_from:
@@ -57,11 +68,23 @@ async def summary(
     top_cat_id = func.coalesce(Category.parent_id, Category.id)
 
     total = await session.scalar(
-        _filtered(select(func.coalesce(func.sum(EUR), 0)).select_from(Item).join(Receipt, Item.receipt_id == Receipt.id), date_from, date_to, user_id)
+        _filtered(
+            select(func.coalesce(func.sum(EUR), 0)).select_from(Item).join(Receipt, Item.receipt_id == Receipt.id),
+            date_from,
+            date_to,
+            user_id,
+        )
     )
 
     receipts_count = await session.scalar(
-        _filtered(select(func.count(func.distinct(Receipt.id))).select_from(Item).join(Receipt, Item.receipt_id == Receipt.id), date_from, date_to, user_id)
+        _filtered(
+            select(func.count(func.distinct(Receipt.id)))
+            .select_from(Item)
+            .join(Receipt, Item.receipt_id == Receipt.id),
+            date_from,
+            date_to,
+            user_id,
+        )
     )
 
     by_top = await session.execute(
@@ -71,7 +94,8 @@ async def summary(
                 func.coalesce(Parent.name, Category.name).label("name"),
                 func.sum(EUR).label("amount"),
             )
-            .select_from(Item).join(Receipt, Item.receipt_id == Receipt.id)
+            .select_from(Item)
+            .join(Receipt, Item.receipt_id == Receipt.id)
             .outerjoin(Category, Item.category_id == Category.id)
             .outerjoin(Parent, Category.parent_id == Parent.id),
             date_from,
@@ -90,7 +114,8 @@ async def summary(
                 Parent.name.label("parent"),
                 func.sum(EUR).label("amount"),
             )
-            .select_from(Item).join(Receipt, Item.receipt_id == Receipt.id)
+            .select_from(Item)
+            .join(Receipt, Item.receipt_id == Receipt.id)
             .outerjoin(Category, Item.category_id == Category.id)
             .outerjoin(Parent, Category.parent_id == Parent.id),
             date_from,
@@ -104,7 +129,8 @@ async def summary(
     by_user = await session.execute(
         _filtered(
             select(User.id, User.name, func.sum(EUR).label("amount"))
-            .select_from(Item).join(Receipt, Item.receipt_id == Receipt.id)
+            .select_from(Item)
+            .join(Receipt, Item.receipt_id == Receipt.id)
             .outerjoin(User, Receipt.user_id == User.id),
             date_from,
             date_to,
@@ -120,7 +146,9 @@ async def summary(
                 func.coalesce(Receipt.store, "—").label("store"),
                 func.sum(EUR).label("amount"),
                 func.count(func.distinct(Receipt.id)).label("receipts"),
-            ).select_from(Item).join(Receipt, Item.receipt_id == Receipt.id),
+            )
+            .select_from(Item)
+            .join(Receipt, Item.receipt_id == Receipt.id),
             date_from,
             date_to,
             user_id,
@@ -154,14 +182,11 @@ async def summary(
 
     income = await income_summary(session, date_from, date_to, user_id)
     transfers = await session.scalar(
-        _filtered(select(func.coalesce(func.sum(Receipt.total), 0)), date_from, date_to, user_id, kind="transfer")
+        _filtered(select(func.coalesce(func.sum(Receipt.total), 0)), date_from, date_to, user_id, kind=Kind.TRANSFER)
     )
 
     def rows(res):
-        return [
-            {k: (round(v, 2) if isinstance(v, float) else v) for k, v in r._mapping.items()}
-            for r in res
-        ]
+        return [{k: (round(v, 2) if isinstance(v, float) else v) for k, v in r._mapping.items()} for r in res]
 
     return {
         "total": round(total or 0, 2),
@@ -185,12 +210,13 @@ async def income_summary(
                 func.coalesce(Category.name, "Без категории").label("name"),
                 func.sum(EUR).label("amount"),
             )
-            .select_from(Item).join(Receipt, Item.receipt_id == Receipt.id)
+            .select_from(Item)
+            .join(Receipt, Item.receipt_id == Receipt.id)
             .outerjoin(Category, Item.category_id == Category.id),
             date_from,
             date_to,
             user_id,
-            kind="income",
+            kind=Kind.INCOME,
         )
         .group_by(func.coalesce(Category.name, "Без категории"))
         .order_by(func.sum(EUR).desc())
@@ -202,7 +228,7 @@ async def income_summary(
 async def monthly(session: AsyncSession, months: int = 12, user_id: int | None = None) -> list[dict]:
     """Totals per month per top-level category for the last N months."""
     Parent = aliased(Category)
-    today = date.today()
+    today = now_local().date()
     y, m = today.year, today.month - (months - 1)
     while m <= 0:
         m += 12
@@ -217,7 +243,8 @@ async def monthly(session: AsyncSession, months: int = 12, user_id: int | None =
                 func.coalesce(Parent.name, Category.name, "Без категории").label("category"),
                 func.sum(EUR).label("amount"),
             )
-            .select_from(Item).join(Receipt, Item.receipt_id == Receipt.id)
+            .select_from(Item)
+            .join(Receipt, Item.receipt_id == Receipt.id)
             .outerjoin(Category, Item.category_id == Category.id)
             .outerjoin(Parent, Category.parent_id == Parent.id),
             start,
@@ -231,7 +258,7 @@ async def monthly(session: AsyncSession, months: int = 12, user_id: int | None =
             start,
             None,
             user_id,
-            kind="income",
+            kind=Kind.INCOME,
         ).group_by(month_expr)
     )
     by_month: dict[str, dict] = {}
@@ -264,9 +291,11 @@ async def category_ids_with_children(session: AsyncSession, category_id: int) ->
 async def spent_in_category(session: AsyncSession, category_id: int, month: str) -> float:
     start, end = month_bounds(month)
     ids = await category_ids_with_children(session, category_id)
-    q = _filtered(select(func.coalesce(func.sum(EUR), 0)).select_from(Item).join(Receipt, Item.receipt_id == Receipt.id), start, end).where(
-        Item.category_id.in_(ids)
-    )
+    q = _filtered(
+        select(func.coalesce(func.sum(EUR), 0)).select_from(Item).join(Receipt, Item.receipt_id == Receipt.id),
+        start,
+        end,
+    ).where(Item.category_id.in_(ids))
     return round(await session.scalar(q) or 0, 2)
 
 
@@ -290,8 +319,6 @@ async def budgets_status(session: AsyncSession, month: str) -> list[dict]:
 
 async def new_budget_alerts(session: AsyncSession, receipt: Receipt) -> list[str]:
     """Messages for budgets that just crossed 80% / 100% this month because of this receipt."""
-    from app.receipts.service import now_local
-
     if not receipt.purchased_at:
         return []
     month = f"{receipt.purchased_at:%Y-%m}"
@@ -312,25 +339,26 @@ async def new_budget_alerts(session: AsyncSession, receipt: Receipt) -> list[str
             continue
         sent = set(
             await session.scalars(
-                select(BudgetAlert.level).where(
-                    BudgetAlert.budget_id == b.id, BudgetAlert.month == month
-                )
+                select(BudgetAlert.level).where(BudgetAlert.budget_id == b.id, BudgetAlert.month == month)
             )
         )
         if level in sent:
             continue
         # mark lower levels as sent too, so 80% never arrives after 100%
+        # ON CONFLICT: when two receipts cross the line at once, only one of them reports it
+        claimed = True
         for lvl in (80, 100):
             if lvl <= level and lvl not in sent:
-                session.add(BudgetAlert(budget_id=b.id, month=month, level=lvl))
+                res = await session.execute(
+                    sqlite_insert(BudgetAlert).values(budget_id=b.id, month=month, level=lvl).on_conflict_do_nothing()
+                )
+                if lvl == level and not res.rowcount:
+                    claimed = False
+        if not claimed:
+            continue
         if level == 100:
-            messages.append(
-                f"🔴 Бюджет «{b.category.name}» превышен: {spent:.2f} € из {b.amount:.2f} €"
-            )
+            messages.append(f"🔴 Бюджет «{b.category.name}» превышен: {spent:.2f} € из {b.amount:.2f} €")
         else:
-            messages.append(
-                f"🟡 Бюджет «{b.category.name}»: потрачено {pct:.0f}% "
-                f"({spent:.2f} € из {b.amount:.2f} €)"
-            )
+            messages.append(f"🟡 Бюджет «{b.category.name}»: потрачено {pct:.0f}% ({spent:.2f} € из {b.amount:.2f} €)")
     await session.commit()
     return messages

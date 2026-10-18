@@ -153,7 +153,11 @@ export default function Receipts() {
         </Alert>
       )}
 
-      {list.isLoading ? (
+      {list.isError ? (
+        <Alert color="red" title="Не удалось загрузить список">
+          {(list.error as Error).message}
+        </Alert>
+      ) : list.isLoading ? (
         <Loader />
       ) : (
         <>

@@ -4,7 +4,9 @@ Revision ID: 0006
 Revises: 0005
 Create Date: 2026-10-18
 """
+
 import sqlalchemy as sa
+
 from alembic import op
 
 revision = "0006"
@@ -33,10 +35,7 @@ def upgrade() -> None:
 
     # bank transfers booked before: "Перевод: Vera Maslennikova" -> counterparty
     op.get_bind().execute(
-        sa.text(
-            "UPDATE receipts SET counterparty = trim(substr(store, :n)) "
-            "WHERE source = 'bank' AND store LIKE :p"
-        ),
+        sa.text("UPDATE receipts SET counterparty = trim(substr(store, :n)) WHERE source = 'bank' AND store LIKE :p"),
         {"n": len(TRANSFER_PREFIX) + 1, "p": TRANSFER_PREFIX + "%"},
     )
 

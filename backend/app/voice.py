@@ -5,11 +5,12 @@ from dataclasses import dataclass
 
 from sqlalchemy import select
 
+from app.constants import NO_DESCRIPTION
 from app.db.models import Receipt, User
 from app.llm.prompt import VOICE_SYSTEM
-from app.receipts.service import NO_DESCRIPTION, ReceiptService
+from app.receipts.service import ReceiptService
 
-MAX_SECONDS = 120
+MAX_VOICE_SECONDS = 60  # longer is a conversation, not an expense; also the cap when converting
 
 
 def to_wav(data: bytes, rate: int = 16000) -> bytes:
@@ -25,7 +26,7 @@ def to_wav(data: bytes, rate: int = 16000) -> bytes:
     for frame in src.decode(audio=0):
         for f in resampler.resample(frame):
             samples += f.samples
-            if samples > MAX_SECONDS * rate:
+            if samples > MAX_VOICE_SECONDS * rate:
                 break
             for p in stream.encode(f):
                 out.mux(p)

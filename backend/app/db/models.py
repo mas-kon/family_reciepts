@@ -8,6 +8,7 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -55,9 +56,11 @@ class Category(Base):
 
 class Receipt(Base):
     __tablename__ = "receipts"
+    # a reply in the chat is matched to a record by (chat, message)
+    __table_args__ = (Index("ix_receipts_chat_message", "chat_id", "message_id"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), index=True)
     # photo | manual | recurring | bank | voice | email
     source: Mapped[str] = mapped_column(String(20), default="photo")
     # expense | income | transfer (money moved inside the family: counted neither as spent nor earned)
@@ -65,7 +68,7 @@ class Receipt(Base):
     # the other person of a bank transfer, as the bank writes it
     counterparty: Mapped[str | None] = mapped_column(String(200))
     # family member on the other side of an inside-the-family transfer
-    peer_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    peer_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), index=True)
     store: Mapped[str | None] = mapped_column(String(200))
     purchased_at: Mapped[datetime | None] = mapped_column(DateTime, index=True)
     total: Mapped[float | None] = mapped_column(Float)  # EUR
@@ -87,7 +90,7 @@ class Receipt(Base):
     chat_id: Mapped[int | None] = mapped_column(BigInteger)
     message_id: Mapped[int | None] = mapped_column(Integer)
     # bot's reply about this receipt: replying to it in the chat edits the receipt
-    bot_message_id: Mapped[int | None] = mapped_column(Integer)
+    bot_message_id: Mapped[int | None] = mapped_column(Integer, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     user: Mapped[User | None] = relationship(lazy="joined", foreign_keys=[user_id])
@@ -112,9 +115,7 @@ class Item(Base):
     qty: Mapped[float] = mapped_column(Float, default=1.0)
     unit_price: Mapped[float | None] = mapped_column(Float)
     total: Mapped[float] = mapped_column(Float)
-    category_id: Mapped[int | None] = mapped_column(
-        ForeignKey("categories.id", ondelete="SET NULL"), index=True
-    )
+    category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id", ondelete="SET NULL"), index=True)
     warranty_until: Mapped[date | None] = mapped_column(Date, index=True)
     warranty_notified: Mapped[bool] = mapped_column(Boolean, default=False)
 
@@ -130,9 +131,7 @@ class CategoryOverride(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     name_normalized: Mapped[str] = mapped_column(String(300), unique=True)
     category_id: Mapped[int] = mapped_column(ForeignKey("categories.id", ondelete="CASCADE"))
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime, server_default=func.now(), onupdate=func.now()
-    )
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
 
 
 class ProductAlias(Base):
@@ -154,9 +153,7 @@ class Budget(Base):
     __tablename__ = "budgets"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    category_id: Mapped[int] = mapped_column(
-        ForeignKey("categories.id", ondelete="CASCADE"), unique=True
-    )
+    category_id: Mapped[int] = mapped_column(ForeignKey("categories.id", ondelete="CASCADE"), unique=True)
     amount: Mapped[float] = mapped_column(Float)
 
     category: Mapped[Category] = relationship(lazy="joined")

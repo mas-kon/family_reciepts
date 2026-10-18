@@ -38,7 +38,7 @@ import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api, type Item, type Kind, type ReceiptDetail } from '../api'
 import { categoryOptions, dateOnly, dateTime, kindMoney, money, SOURCE_LABEL, sourceLabel, STATUS_LABEL } from '../format'
-import { notifyError, notifyOk, useCategories, useMeta, useUsers } from '../hooks'
+import { notifyError, notifyOk, useCategories, useMeta, useUsers, invalidateRecords } from '../hooks'
 
 type ItemDraft = Pick<Item, 'name_original' | 'name_ru' | 'qty' | 'unit_price' | 'total' | 'warranty_until'>
 
@@ -115,7 +115,7 @@ function ItemRow({
             <ActionIcon variant="subtle" size="sm" aria-label="Изменить" onClick={() => setEdit(true)}>
               <IconPencil size={14} />
             </ActionIcon>
-            <ActionIcon variant="subtle" color="red" size="sm" aria-label="Удалить" onClick={() => del.mutate()} loading={del.isPending}>
+            <ActionIcon variant="subtle" color="red" size="sm" aria-label="Удалить" onClick={() => confirm('Удалить позицию?') && del.mutate()} loading={del.isPending}>
               <IconTrash size={14} />
             </ActionIcon>
           </Group>
@@ -178,7 +178,7 @@ function KindControl({ r, onSaved }: { r: ReceiptDetail; onSaved: (r: ReceiptDet
     onSuccess: (x, body) => {
       setAsking(false)
       onSaved(x)
-      qc.invalidateQueries()
+      invalidateRecords(qc)
       if (body.remember_peer) notifyOk(`Переводы «${r.counterparty}» теперь всегда внутри семьи`)
     },
     onError: notifyError,
@@ -290,8 +290,7 @@ export default function ReceiptDetailPage() {
   const q = useQuery({ queryKey: key, queryFn: () => api<ReceiptDetail>(`/receipts/${id}`) })
   const update = (r: ReceiptDetail) => {
     qc.setQueryData(key, r)
-    qc.invalidateQueries({ queryKey: ['receipts'] })
-    qc.invalidateQueries({ queryKey: ['summary'] })
+    invalidateRecords(qc)
   }
 
   const status = useMutation({
@@ -316,7 +315,7 @@ export default function ReceiptDetailPage() {
   const del = useMutation({
     mutationFn: () => api(`/receipts/${id}`, { method: 'DELETE' }),
     onSuccess: () => {
-      qc.invalidateQueries()
+      invalidateRecords(qc)
       navigate('/receipts')
     },
     onError: notifyError,

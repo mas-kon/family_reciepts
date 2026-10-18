@@ -152,7 +152,9 @@ async def test_manual_for_member_and_reply_edits(session, fake_llm, dp):
 
 
 async def test_bank_notification_in_group(session, fake_llm, dp):
-    fake_llm.bank = {"transactions": [{"date": "2026-10-16T17:17", "amount": 12.5, "merchant": "Kaufland", "card": "1234"}]}
+    fake_llm.bank = {
+        "transactions": [{"date": "2026-10-16T17:17", "amount": 12.5, "merchant": "Kaufland", "card": "1234"}]
+    }
     fake_llm.manual = {"name": "Kaufland", "amount": 12.5, "category": "Бакалея"}
     fs = FakeSession(b"")
     bot = Bot("42:TEST", session=fs, default=DefaultBotProperties(parse_mode="HTML"))
@@ -174,19 +176,28 @@ async def test_voice_message(session, fake_llm, dp, monkeypatch):
     from tests.test_ai import _opus
 
     monkeypatch.setattr(get_settings(), "llm_audio_models", "audio/model")
-    fake_llm.voice = {"transcript": "двенадцать евро такси", "name": "такси", "amount": 12}
+    fake_llm.voice = {
+        "has_speech": True,
+        "is_expense": True,
+        "transcript": "двенадцать евро такси",
+        "name": "такси",
+        "amount": 12,
+    }
     fake_llm.manual = {"name": "Такси", "amount": 12, "category": "Такси и общественный транспорт"}
     fs = FakeSession(_opus(1.0))
     bot = Bot("42:TEST", session=fs, default=DefaultBotProperties(parse_mode="HTML"))
-    upd = Update.model_validate({
-        "update_id": 30,
-        "message": {
-            "message_id": 30, "date": int(dt.datetime.now().timestamp()),
-            "chat": {"id": CHAT.id, "type": "group", "title": "Семья"},
-            "from": {"id": 7, "is_bot": False, "first_name": "Анна"},
-            "voice": {"file_id": "v1", "file_unique_id": "uv1", "duration": 2},
-        },
-    })
+    upd = Update.model_validate(
+        {
+            "update_id": 30,
+            "message": {
+                "message_id": 30,
+                "date": int(dt.datetime.now().timestamp()),
+                "chat": {"id": CHAT.id, "type": "group", "title": "Семья"},
+                "from": {"id": 7, "is_bot": False, "first_name": "Анна"},
+                "voice": {"file_id": "v1", "file_unique_id": "uv1", "duration": 2},
+            },
+        }
+    )
     await dp.feed_update(bot, upd)
     assert "Такси" in fs.texts()[-1] and "12.00" in fs.texts()[-1]
     r = await session.scalar(select(Receipt))
@@ -198,33 +209,72 @@ async def test_pdf_statement_is_booked_on_button(session, fake_llm, dp, monkeypa
 
     session.add(User(name="Вера", bank_names="Vera Maslennikova"))
     await session.commit()
-    fake_llm.bank = {"transactions": [
-        {"date": "2026-09-24T10:00", "amount": 17.54, "merchant": "Zoom", "card": "0767", "type": "purchase"},
-        {"date": "2026-09-24T10:00", "amount": 15, "merchant": "Пополнение с карты", "type": "own"},
-        {"date": "2026-09-25T10:00", "amount": 4, "merchant": "Перевод: Vera Maslennikova", "type": "transfer_out",
-         "counterparty": "VERA  MASLENNIKOVA"},
-        {"date": "2026-09-26T10:00", "amount": 1500, "merchant": "Заплата ООД", "type": "income"},
-    ]}
+    fake_llm.bank = {
+        "transactions": [
+            {"date": "2026-09-24T10:00", "amount": 17.54, "merchant": "Zoom", "card": "0767", "type": "purchase"},
+            {"date": "2026-09-24T10:00", "amount": 15, "merchant": "Пополнение с карты", "type": "own"},
+            {
+                "date": "2026-09-25T10:00",
+                "amount": 4,
+                "merchant": "Перевод: Vera Maslennikova",
+                "type": "transfer_out",
+                "counterparty": "VERA  MASLENNIKOVA",
+            },
+            {"date": "2026-09-26T10:00", "amount": 1500, "merchant": "Заплата ООД", "type": "income"},
+        ]
+    }
     fake_llm.manual = {"name": "Zoom", "amount": 17.54, "category": "Связь и интернет"}
     monkeypatch.setattr(handlers, "statement_text", lambda data, name: "Выписка IBAN LT903250089798526389 баланс")
     fs = FakeSession(b"%PDF-1.4")
     bot = Bot("42:TEST", session=fs, default=DefaultBotProperties(parse_mode="HTML"))
     chat = {"id": CHAT.id, "type": "group", "title": "Семья"}
     user = {"id": 7, "is_bot": False, "first_name": "Анна"}
-    await dp.feed_update(bot, Update.model_validate({"update_id": 40, "message": {
-        "message_id": 40, "date": int(dt.datetime.now().timestamp()), "chat": chat, "from": user,
-        "document": {"file_id": "d1", "file_unique_id": "ud1", "file_name": "statement.pdf", "mime_type": "application/pdf"},
-    }}))
+    await dp.feed_update(
+        bot,
+        Update.model_validate(
+            {
+                "update_id": 40,
+                "message": {
+                    "message_id": 40,
+                    "date": int(dt.datetime.now().timestamp()),
+                    "chat": chat,
+                    "from": user,
+                    "document": {
+                        "file_id": "d1",
+                        "file_unique_id": "ud1",
+                        "file_name": "statement.pdf",
+                        "mime_type": "application/pdf",
+                    },
+                },
+            }
+        ),
+    )
     text = fs.texts()[-1]
     assert "Выписка" in text and "Zoom" in text and "Пополнение" not in text
     assert "Между своими счетами: 1" in text and "→ Вера" in text and "Доходы (1, 1500.00 €)" in text
     assert await session.scalar(select(func.count(Receipt.id))) == 0  # nothing booked before the button
 
     token = next(iter(handlers._statements))
-    await dp.feed_update(bot, Update.model_validate({"update_id": 41, "callback_query": {
-        "id": "cb1", "from": user, "chat_instance": "ci", "data": f"stmt:{token}",
-        "message": {"message_id": 1001, "date": int(dt.datetime.now().timestamp()), "chat": chat, "text": text},
-    }}))
+    await dp.feed_update(
+        bot,
+        Update.model_validate(
+            {
+                "update_id": 41,
+                "callback_query": {
+                    "id": "cb1",
+                    "from": user,
+                    "chat_instance": "ci",
+                    "data": f"stmt:{token}",
+                    "message": {
+                        "message_id": 1001,
+                        "date": int(dt.datetime.now().timestamp()),
+                        "chat": chat,
+                        "text": text,
+                    },
+                },
+            }
+        ),
+    )
     assert "Записано: 3" in fs.texts()[-1]
     rows = {r.store: r for r in await session.scalars(select(Receipt))}
     r = rows["Zoom"]
@@ -235,11 +285,23 @@ async def test_pdf_statement_is_booked_on_button(session, fake_llm, dp, monkeypa
 
     # "Удалить всю выписку" asks first, then removes every record of this statement
     def cb(uid, data):
-        return Update.model_validate({"update_id": uid, "callback_query": {
-            "id": f"cb{uid}", "from": user, "chat_instance": "ci", "data": data,
-            "message": {"message_id": 1001, "date": int(dt.datetime.now().timestamp()), "chat": chat,
-                        "text": fs.texts()[-1]},
-        }})
+        return Update.model_validate(
+            {
+                "update_id": uid,
+                "callback_query": {
+                    "id": f"cb{uid}",
+                    "from": user,
+                    "chat_instance": "ci",
+                    "data": data,
+                    "message": {
+                        "message_id": 1001,
+                        "date": int(dt.datetime.now().timestamp()),
+                        "chat": chat,
+                        "text": fs.texts()[-1],
+                    },
+                },
+            }
+        )
 
     await dp.feed_update(bot, cb(42, f"impdel:{r.import_id}"))
     assert await session.scalar(select(func.count(Receipt.id))) == 3
@@ -256,3 +318,21 @@ async def test_income_command(session, fake_llm, dp):
     assert fs.texts()[-1].startswith("💰") and "Доход 1500.00 €" in fs.texts()[-1]
     r = await session.scalar(select(Receipt))
     assert r.kind == "income" and r.items[0].category.name == "Зарплата"
+
+
+async def test_other_chats_are_ignored_but_chatid_works(session, fake_llm, dp, monkeypatch):
+    from app.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "allowed_chat_ids", "-555")  # not the chat of the updates
+    fs = FakeSession(b"")
+    bot = Bot("42:TEST", session=fs, default=DefaultBotProperties(parse_mode="HTML"))
+
+    await dp.feed_update(bot, text_update(60, "+ кофе 3"))
+    assert fs.sent == [] and await session.scalar(select(func.count(Receipt.id))) == 0
+
+    await dp.feed_update(bot, text_update(61, "/chatid"))
+    assert str(CHAT.id) in fs.texts()[-1]
+
+    monkeypatch.setattr(get_settings(), "allowed_chat_ids", str(CHAT.id))
+    await dp.feed_update(bot, text_update(62, "+ 3"))
+    assert await session.scalar(select(func.count(Receipt.id))) == 1

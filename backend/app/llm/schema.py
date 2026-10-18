@@ -7,11 +7,35 @@ def _to_float(v):
     if v is None or v == "":
         return None
     if isinstance(v, str):
-        v = v.replace(" ", "").replace(",", ".")
-        v = "".join(ch for ch in v if ch.isdigit() or ch in ".-")
+        v = "".join(ch for ch in v if ch.isdigit() or ch in ".,-")
+        # the last separator is the decimal one: "1,234.56", "1.234,56" and "23,40" all work
+        cut = max(v.rfind("."), v.rfind(","))
+        if cut != -1:
+            v = v[:cut].replace(".", "").replace(",", "") + "." + v[cut + 1 :]
         if not v or v in {".", "-"}:
             return None
     return float(v)
+
+
+DATE_FORMATS = ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M", "%Y-%m-%d", "%d.%m.%Y")
+
+
+def parse_dt(v) -> datetime | None:
+    """A date from a model answer ("2026-01-15T14:30", "2026-01-15 14:30", "15.01.2026", ...);
+    None when it cannot be read. Extra text after the date (a zone, seconds) is ignored."""
+    if not v:
+        return None
+    if isinstance(v, datetime):
+        return v
+    text = str(v).strip().replace(" ", "T", 1)
+    for fmt in DATE_FORMATS:
+        # a format needs this many characters of the text (strptime rejects trailing data)
+        size = len(datetime(2000, 1, 1).strftime(fmt))
+        try:
+            return datetime.strptime(text[:size], fmt)
+        except ValueError:
+            continue
+    return None
 
 
 class ParsedItem(BaseModel):
@@ -24,9 +48,7 @@ class ParsedItem(BaseModel):
     # warranty in months for electronics and appliances, null for everything else
     warranty_months: int | None = None
 
-    _num = field_validator("qty", "unit_price", "total", mode="before")(
-        lambda v: _to_float(v)
-    )
+    _num = field_validator("qty", "unit_price", "total", mode="before")(lambda v: _to_float(v))
 
     @field_validator("warranty_months", mode="before")
     @classmethod
@@ -49,20 +71,7 @@ class ParsedReceipt(BaseModel):
 
     _num = field_validator("total", mode="before")(lambda v: _to_float(v))
 
-    @field_validator("purchased_at", mode="before")
-    @classmethod
-    def _dt(cls, v):
-        if not v:
-            return None
-        if isinstance(v, str):
-            v = v.strip().replace(" ", "T", 1)
-            for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M", "%Y-%m-%d", "%d.%m.%Y"):
-                try:
-                    return datetime.strptime(v[: len(datetime.now().strftime(fmt))], fmt)
-                except ValueError:
-                    continue
-            return None
-        return v
+    _dt = field_validator("purchased_at", mode="before")(lambda v: parse_dt(v))
 
 
 class ParsedManual(BaseModel):
@@ -71,20 +80,6 @@ class ParsedManual(BaseModel):
     category: str | None = None
 
     _num = field_validator("amount", mode="before")(lambda v: _to_float(v))
-
-
-def _to_dt(v):
-    if not v:
-        return None
-    if isinstance(v, datetime):
-        return v
-    v = str(v).strip().replace(" ", "T", 1)
-    for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M", "%Y-%m-%d", "%d.%m.%Y"):
-        try:
-            return datetime.strptime(v[: len(datetime(2000, 1, 1).strftime(fmt))], fmt)
-        except ValueError:
-            continue
-    return None
 
 
 BANK_TX_TYPES = {"purchase", "income", "transfer_out", "transfer_in", "own"}
@@ -102,13 +97,11 @@ class ParsedBankTx(BaseModel):
     type: str | None = None
     # person of a transfer, as the bank writes them
     counterparty: str | None = None
-    # older answers had only this flag
-    is_expense: bool | None = None
 
     @model_validator(mode="after")
     def _type(self):
         if self.type not in BANK_TX_TYPES:
-            self.type = "purchase" if self.is_expense is not False else "own"
+            self.type = "purchase"
         return self
 
     @property
@@ -116,7 +109,7 @@ class ParsedBankTx(BaseModel):
         return self.type in {"purchase", "transfer_out"}
 
     _num = field_validator("amount", mode="before")(lambda v: abs(_to_float(v) or 0))
-    _dt = field_validator("date", mode="before")(lambda v: _to_dt(v))
+    _dt = field_validator("date", mode="before")(lambda v: parse_dt(v))
 
     @field_validator("card", mode="before")
     @classmethod
@@ -130,8 +123,9 @@ class ParsedBank(BaseModel):
 
 
 class ParsedVoice(BaseModel):
-    has_speech: bool = True
-    is_expense: bool = True
+    # a missing flag must not turn silence or small talk into an expense
+    has_speech: bool = False
+    is_expense: bool = False
     transcript: str = ""
     # family member the purchase is for, if said ("Маше на кино 12")
     who: str | None = None

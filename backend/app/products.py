@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models import Item, ProductAlias, Receipt
 from app.db.session import session_factory
 from app.llm.client import LLMError
-from app.stats import PRODUCT_KEY  # noqa: F401  (re-exported for callers)
+from app.stats import PRODUCT_KEY
 
 log = logging.getLogger(__name__)
 
@@ -102,11 +102,7 @@ def schedule_grouping(names: list[str], llm) -> None:
 async def merge(session: AsyncSession, keys: list[str], product: str) -> int:
     """Puts every line of the given product keys under one product name (manual, kept forever)."""
     product = product.strip()[:300]
-    names = set(
-        await session.scalars(
-            with_alias(select(Item.name_normalized)).where(PRODUCT_KEY.in_(keys)).distinct()
-        )
-    )
+    names = set(await session.scalars(with_alias(select(Item.name_normalized)).where(PRODUCT_KEY.in_(keys)).distinct()))
     names |= set(await session.scalars(select(ProductAlias.name_normalized).where(ProductAlias.product.in_(keys))))
     for name in names:
         alias = await session.scalar(select(ProductAlias).where(ProductAlias.name_normalized == name))
