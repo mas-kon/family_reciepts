@@ -211,6 +211,8 @@ MESSAGES: dict[str, str | tuple[str, ...]] = {
     "api.llm_down": "Нейросеть не ответила: {error}",
     "api.record": "Запись",
     "api.file_too_big": "Файл больше 5 МБ",
+    "api.file_too_big_photo": "Фото больше 25 МБ",
+    "app.title": "Семейные расходы",
     "api.no_statement": "Такой выписки нет",
     "api.parent_top_level": "Родителем может быть только категория верхнего уровня",
     "api.category_exists": "Такая категория уже есть",

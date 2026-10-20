@@ -211,6 +211,8 @@ MESSAGES: dict[str, str | tuple[str, ...]] = {
     "api.llm_down": "The AI did not answer: {error}",
     "api.record": "Record",
     "api.file_too_big": "The file is larger than 5 MB",
+    "api.file_too_big_photo": "The file is larger than 25 MB",
+    "app.title": "Family expenses",
     "api.no_statement": "No such statement",
     "api.parent_top_level": "Only a top-level category can be a parent",
     "api.category_exists": "This category already exists",

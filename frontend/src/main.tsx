@@ -9,6 +9,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import './i18n'
+import './install'
 import App from './App'
 
 const theme = createTheme({
@@ -33,3 +34,12 @@ createRoot(document.getElementById('root')!).render(
     </MantineProvider>
   </StrictMode>,
 )
+
+// The service worker only receives files from the system share sheet; it caches nothing.
+if ('serviceWorker' in navigator) {
+  try {
+    void navigator.serviceWorker.register('/sw.js').catch(() => {})
+  } catch {
+    /* not available (private mode, http) */
+  }
+}

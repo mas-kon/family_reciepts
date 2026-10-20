@@ -7,11 +7,12 @@ from aiogram import Bot, F, Router
 from aiogram.types import Message
 
 from app.bank import looks_like_statement, statement_text
-from app.bot.common import download, edit, get_sender, llm_slots, send_alerts
+from app.bot.common import download, edit, get_sender, send_alerts
 from app.bot.statements import read_statement
 from app.bot.ui import duplicate_keyboard, format_receipt, receipt_keyboard
 from app.db.session import session_factory
 from app.i18n import t
+from app.llm.slots import llm_slots
 from app.receipts.service import ProcessResult, ReceiptService, split_who
 from app.stats import new_budget_alerts
 

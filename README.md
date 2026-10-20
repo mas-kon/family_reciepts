@@ -148,6 +148,17 @@ expenses.example.com {
 }
 ```
 
+## App on the phone
+
+The web app can be installed on a phone and used as a second way in for receipts, next to the Telegram group. It needs HTTPS (see the reverse proxy above) and a signed-in family member.
+
+- **Install.** Android (Chrome): Settings → Report and mail («Настройки → Отчёт и почта») → *Install the app*, or the browser menu. iPhone (Safari): Share → Add to Home Screen.
+- **Camera.** On the Records page («Записи») the *Take a photo* button opens the phone camera; *From gallery* picks one or several pictures or PDFs. A receipt is recognised the same way as in the group, and one that was recognised cleanly opens at once.
+- **Share (Android only).** After installation the app appears in the system Share menu for pictures and PDFs: choose a receipt in the gallery, tap Share, pick the app. The files are uploaded one by one. On iPhone this is not possible, use the buttons in the app.
+- **Retries.** If the connection drops, the upload is repeated; a request that actually went through is recognised as a duplicate, so no second record appears.
+- Pictures are sent as they are (not shrunk), so the QR code on the receipt stays readable. Up to 25 MB per file. The app does not work offline and caches no data. Budget warnings caused by an uploaded receipt are also sent to the group.
+- If a reverse proxy is used, it must pass `/share-target`, `/sw.js` and `/manifest.webmanifest`, and wait for a response for at least 120 seconds (model cascade).
+
 ## LLM
 
 ### Models per task
@@ -272,6 +283,7 @@ Where things are in the backend:
 | `app/receipts/recognition.py` | receipt recognition: photos, PDFs, e-mails, model cascade, duplicates |
 | `app/receipts/records.py` | records without a picture (typed, spoken, recurring, bank) and edits |
 | `app/receipts/base.py`, `parsing.py`, `images.py` | shared service basics, parsing of typed text, picture and PDF work |
+| `app/llm/slots.py` | limit of parallel model requests, shared by the bot and the web app |
 | `app/bank.py` | bank notifications, statements, transaction types and transfers inside the family |
 | `app/voice.py` | voice messages |
 | `app/products.py` | product merging |

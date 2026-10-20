@@ -11,7 +11,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 from aiogram.types import User as TgUser
 
 from app.bank import analyse_statement, book_statement, delete_import
-from app.bot.common import callback_arg, callback_message, edit, llm_slots, send_alerts
+from app.bot.common import callback_arg, callback_message, edit, send_alerts
 from app.bot.ui import money
 from app.config import get_settings
 from app.constants import Kind
@@ -19,6 +19,7 @@ from app.db.session import session_factory
 from app.i18n import all_languages, t
 from app.llm.client import LLMError
 from app.llm.schema import ParsedBankTx
+from app.llm.slots import llm_slots
 from app.receipts.service import ReceiptService
 from app.stats import new_budget_alerts
 

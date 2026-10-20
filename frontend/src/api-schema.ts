@@ -196,6 +196,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/receipts/upload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload Receipt
+         * @description A receipt picture or PDF from the web app. Waits for recognition, like the bot does.
+         *     `client_id` makes a repeated request (a lost connection) return the same record as a duplicate.
+         */
+        post: operations["upload_receipt_api_receipts_upload_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/receipts/{rid}/items": {
         parameters: {
             query?: never;
@@ -825,6 +846,17 @@ export interface components {
         Body_bank_statement_api_bank_statement_post: {
             /** File */
             file: string;
+        };
+        /** Body_upload_receipt_api_receipts_upload_post */
+        Body_upload_receipt_api_receipts_upload_post: {
+            /** File */
+            file: string;
+            /** Client Id */
+            client_id: string;
+            /** Note */
+            note?: string | null;
+            /** User Id */
+            user_id?: number | null;
         };
         /** BudgetIn */
         BudgetIn: {
@@ -1604,6 +1636,18 @@ export interface components {
             /** Count */
             count: number;
         };
+        /** UploadOut */
+        UploadOut: {
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ok" | "needs_review" | "failed" | "duplicate" | "maybe_duplicate" | "not_receipt" | "statement";
+            receipt: components["schemas"]["ReceiptDetail"] | null;
+            duplicate_of: components["schemas"]["ReceiptBrief"] | null;
+            /** Alerts */
+            alerts: string[];
+        };
         /** UsageOut */
         UsageOut: {
             /** Days */
@@ -2100,6 +2144,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ReceiptDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_receipt_api_receipts_upload_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_receipt_api_receipts_upload_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UploadOut"];
                 };
             };
             /** @description Validation Error */

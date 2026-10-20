@@ -211,6 +211,8 @@ MESSAGES: dict[str, str | tuple[str, ...]] = {
     "api.llm_down": "Изкуственият интелект не отговори: {error}",
     "api.record": "Запис",
     "api.file_too_big": "Файлът е по-голям от 5 МБ",
+    "api.file_too_big_photo": "Файлът е по-голям от 25 МБ",
+    "app.title": "Семейни разходи",
     "api.no_statement": "Няма такова извлечение",
     "api.parent_top_level": "Родител може да бъде само категория от най-горно ниво",
     "api.category_exists": "Тази категория вече съществува",

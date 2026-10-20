@@ -38,6 +38,7 @@ const Dashboard = lazy(() => import('./pages/Dashboard'))
 const Products = lazy(() => import('./pages/Products'))
 const ReceiptDetailPage = lazy(() => import('./pages/ReceiptDetail'))
 const Receipts = lazy(() => import('./pages/Receipts'))
+const Share = lazy(() => import('./pages/Share'))
 const Settings = lazy(() => import('./pages/Settings'))
 const Warranties = lazy(() => import('./pages/Warranties'))
 
@@ -153,6 +154,7 @@ export default function App() {
           <Route path="/ask" element={<Ask />} />
           <Route path="/bank" element={<BankImport />} />
           <Route path="/warranties" element={<Warranties />} />
+          <Route path="/share" element={<Share />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

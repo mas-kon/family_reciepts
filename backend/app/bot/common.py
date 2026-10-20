@@ -1,6 +1,5 @@
 """Helpers shared by the bot's handlers."""
 
-import asyncio
 import html
 import logging
 
@@ -16,9 +15,6 @@ from app.receipts.service import ReceiptService
 from app.stats import new_budget_alerts
 
 log = logging.getLogger(__name__)
-
-# free LLM tiers are rate limited: do not hammer them when someone sends an album
-llm_slots = asyncio.Semaphore(2)
 
 
 def callback_message(cb: CallbackQuery) -> Message | None:

@@ -18,6 +18,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { api, qs, type Receipt } from '../api'
+import { UploadReceipt } from '../components/UploadReceipt'
 import { ManualExpenseModal } from '../components/ManualExpenseModal'
 import { DeleteImportButton } from '../components/DeleteImportButton'
 import {
@@ -90,6 +91,8 @@ export default function Receipts() {
           </Button>
         </Group>
       </Group>
+
+      <UploadReceipt />
 
       <Group gap="sm" align="flex-end" wrap="wrap">
         <TextInput

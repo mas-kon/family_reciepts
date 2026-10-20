@@ -1,27 +1,37 @@
+import asyncio
 import csv
 import io
+import logging
 from datetime import date, datetime, timedelta
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased, noload
 
+from app.api.ai import ReceiptBrief, _receipt_brief
 from app.api.deps import Viewer, current_viewer
 from app.api.schemas import Ok
+from app.bank import looks_like_statement, statement_text
 from app.clock import now_local
+from app.config import get_settings
 from app.constants import Kind, income_default, no_description
 from app.db.models import Category, Item, Receipt, User
 from app.db.session import get_session, icontains
 from app.i18n import t
+from app.llm.slots import llm_slots
 from app.receipts.money import round2
 from app.receipts.service import ReceiptService
 from app.receipts.text import normalize_name
+from app.stats import new_budget_alerts
 
+log = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["receipts"], dependencies=[Depends(current_viewer)])
+
+MAX_PHOTO_BYTES = 25 * 1024 * 1024
 
 
 # ---------- schemas ----------
@@ -119,6 +129,13 @@ class ManualIn(BaseModel):
     purchased_at: datetime | None = None
     store: str | None = None
     kind: str = Field("expense", pattern="^(expense|income)$")
+
+
+class UploadOut(BaseModel):
+    status: Literal["ok", "needs_review", "failed", "duplicate", "maybe_duplicate", "not_receipt", "statement"]
+    receipt: ReceiptDetail | None
+    duplicate_of: ReceiptBrief | None
+    alerts: list[str]
 
 
 class ReprocessIn(BaseModel):
@@ -294,7 +311,9 @@ async def get_image(rid: int, session: AsyncSession = Depends(get_session)):
     if not path or not path.exists():
         raise HTTPException(404, t("api.no_photo"))
     media = "image/heic" if path.suffix.lower() in {".heic", ".heif"} else None
-    return FileResponse(path, media_type=media, headers={"Cache-Control": "private, no-cache"})  # revalidate (ETag): an id can be reused
+    return FileResponse(
+        path, media_type=media, headers={"Cache-Control": "private, no-cache"}
+    )  # revalidate (ETag): an id can be reused
 
 
 @router.patch("/receipts/{rid}", response_model=ReceiptDetail)
@@ -367,6 +386,78 @@ async def add_manual(
         store=data.store,
     )
     return to_detail(await load_receipt(session, r.id))
+
+
+@router.post("/receipts/upload", response_model=UploadOut)
+async def upload_receipt(
+    request: Request,
+    file: UploadFile = File(...),
+    client_id: str = Form(pattern=r"^[0-9A-Za-z-]{8,64}$"),
+    note: str | None = Form(None),
+    user_id: int | None = Form(None),
+    session: AsyncSession = Depends(get_session),
+    viewer: Viewer = Depends(current_viewer),
+):
+    """A receipt picture or PDF from the web app. Waits for recognition, like the bot does.
+    `client_id` makes a repeated request (a lost connection) return the same record as a duplicate."""
+    if file.size is not None and file.size > MAX_PHOTO_BYTES:
+        raise HTTPException(413, t("api.file_too_big_photo"))
+    data = await file.read(MAX_PHOTO_BYTES + 1)
+    if len(data) > MAX_PHOTO_BYTES:
+        raise HTTPException(413, t("api.file_too_big_photo"))
+    await ensure_exists(session, User, user_id, t("api.member"))
+    owner_id = user_id or viewer.user_id
+    owner = await session.get(User, owner_id) if owner_id else None
+    name = (file.filename or "").lower()
+    is_pdf = file.content_type == "application/pdf" or name.endswith(".pdf")
+    ext = (file.content_type or "").split("/")[-1].replace("jpeg", "jpg") if file.content_type else ""
+    if not ext.isalnum() or ext == "octet-stream":
+        ext = name.rsplit(".", 1)[-1] if "." in name else "jpg"
+    external_id = f"web:{client_id}"
+    note = (note or "").strip() or None
+
+    svc = ReceiptService(session)
+    async with llm_slots:
+        if is_pdf:
+            try:
+                text = await asyncio.to_thread(statement_text, data, "x.pdf")
+            except Exception:
+                text = ""  # a scan: read it as a receipt picture
+            if looks_like_statement(text):
+                return UploadOut(status="statement", receipt=None, duplicate_of=None, alerts=[])
+            res = await svc.process_pdf(data, owner, external_id=external_id, note=note)
+        else:
+            res = await svc.process_photo(data, owner, ext=ext, note=note, external_id=external_id)
+
+    if res.duplicate_of:
+        return UploadOut(status="duplicate", receipt=None, duplicate_of=_receipt_brief(res.duplicate_of), alerts=[])
+    if res.not_receipt:
+        return UploadOut(status="not_receipt", receipt=None, duplicate_of=None, alerts=[])
+    receipt = res.receipt
+    if receipt is None:
+        return UploadOut(status="failed", receipt=None, duplicate_of=None, alerts=[])
+    await session.commit()
+    detail = to_detail(await load_receipt(session, receipt.id))
+    if res.error or receipt.status == "failed":
+        return UploadOut(status="failed", receipt=detail, duplicate_of=None, alerts=[])
+    if res.maybe_duplicate_of:
+        return UploadOut(
+            status="maybe_duplicate",
+            receipt=detail,
+            duplicate_of=_receipt_brief(res.maybe_duplicate_of),
+            alerts=[],
+        )
+    alerts = await new_budget_alerts(session, receipt)
+    bot = getattr(request.app.state, "bot", None)
+    chat = get_settings().notify_chat_id
+    if bot and chat:
+        for a in alerts:
+            try:
+                await bot.send_message(chat, a)
+            except Exception:
+                log.exception("failed to send a budget alert")
+    status = "needs_review" if receipt.status == "needs_review" else "ok"
+    return UploadOut(status=status, receipt=detail, duplicate_of=None, alerts=alerts)
 
 
 # ---------- items ----------

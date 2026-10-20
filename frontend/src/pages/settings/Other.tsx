@@ -1,10 +1,11 @@
 import { Alert, Badge, Button, Card, Code, Group, Stack, Text, TextInput, Title } from '@mantine/core'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import dayjs from 'dayjs'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Trans, useTranslation } from 'react-i18next'
 import { api, qs, type MailStatus } from '../../api'
 import { dateTime } from '../../format'
+import { getInstallEvent, onInstallChange } from '../../install'
 import { notifyError, notifyOk } from '../../hooks'
 
 export default function Other() {
@@ -25,8 +26,33 @@ export default function Other() {
     onSuccess: () => notifyOk(t('other.report_sent')),
     onError: notifyError,
   })
+  const [installEvent, setInstallEvent] = useState(getInstallEvent)
+  useEffect(() => onInstallChange(() => setInstallEvent(getInstallEvent())), [])
+  const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent)
+  const installed = window.matchMedia('(display-mode: standalone)').matches
+
   return (
     <Stack>
+      {!installed && (
+        <Card withBorder>
+          <Title order={5} mb="xs">
+            {t('other.install_title')}
+          </Title>
+          <Text size="sm" c="dimmed" mb="sm">
+            {isIos ? t('other.install_ios') : installEvent ? t('other.install_hint') : t('other.install_manual')}
+          </Text>
+          {installEvent && (
+            <Button
+              onClick={async () => {
+                await installEvent.prompt()
+                setInstallEvent(null)
+              }}
+            >
+              {t('other.install_button')}
+            </Button>
+          )}
+        </Card>
+      )}
       <Card withBorder>
         <Title order={5} mb="xs">
           {t('other.report_title')}

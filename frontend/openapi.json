@@ -643,6 +643,48 @@
     }
    }
   },
+  "/api/receipts/upload": {
+   "post": {
+    "tags": [
+     "receipts"
+    ],
+    "summary": "Upload Receipt",
+    "description": "A receipt picture or PDF from the web app. Waits for recognition, like the bot does.\n`client_id` makes a repeated request (a lost connection) return the same record as a duplicate.",
+    "operationId": "upload_receipt_api_receipts_upload_post",
+    "requestBody": {
+     "content": {
+      "multipart/form-data": {
+       "schema": {
+        "$ref": "#/components/schemas/Body_upload_receipt_api_receipts_upload_post"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/UploadOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
   "/api/receipts/{rid}/items": {
    "post": {
     "tags": [
@@ -2475,6 +2517,48 @@
      "file"
     ],
     "title": "Body_bank_statement_api_bank_statement_post"
+   },
+   "Body_upload_receipt_api_receipts_upload_post": {
+    "properties": {
+     "file": {
+      "type": "string",
+      "contentMediaType": "application/octet-stream",
+      "title": "File"
+     },
+     "client_id": {
+      "type": "string",
+      "pattern": "^[0-9A-Za-z-]{8,64}$",
+      "title": "Client Id"
+     },
+     "note": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Note"
+     },
+     "user_id": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "User Id"
+     }
+    },
+    "type": "object",
+    "required": [
+     "file",
+     "client_id"
+    ],
+    "title": "Body_upload_receipt_api_receipts_upload_post"
    },
    "BudgetIn": {
     "properties": {
@@ -5246,6 +5330,58 @@
      "count"
     ],
     "title": "TopItem"
+   },
+   "UploadOut": {
+    "properties": {
+     "status": {
+      "type": "string",
+      "enum": [
+       "ok",
+       "needs_review",
+       "failed",
+       "duplicate",
+       "maybe_duplicate",
+       "not_receipt",
+       "statement"
+      ],
+      "title": "Status"
+     },
+     "receipt": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/ReceiptDetail"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "duplicate_of": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/ReceiptBrief"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "alerts": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Alerts"
+     }
+    },
+    "type": "object",
+    "required": [
+     "status",
+     "receipt",
+     "duplicate_of",
+     "alerts"
+    ],
+    "title": "UploadOut"
    },
    "UsageOut": {
     "properties": {

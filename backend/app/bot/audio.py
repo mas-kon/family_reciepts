@@ -7,10 +7,11 @@ import logging
 from aiogram import Bot, F, Router
 from aiogram.types import Message
 
-from app.bot.common import download, get_sender, llm_slots, react, reply_with_record
+from app.bot.common import download, get_sender, react, reply_with_record
 from app.config import get_settings
 from app.db.session import session_factory
 from app.i18n import t
+from app.llm.slots import llm_slots
 from app.receipts.service import ReceiptService
 from app.voice import MAX_VOICE_SECONDS, handle_voice, to_wav
 
