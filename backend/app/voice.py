@@ -57,7 +57,7 @@ async def handle_voice(
     chat_id: int | None = None,
     message_id: int | None = None,
 ) -> VoiceResult:
-    family = ", ".join(u.name for u in await svc.session.scalars(select(User))) or t("voice.nobody")
+    family = ", ".join(u.name for u in await svc.session.scalars(select(User))) or "none"
     res = await svc.llm.parse_voice(wav, VOICE_SYSTEM.replace("{family}", family))
     v = res.data
     if not v.has_speech or not v.is_expense or v.amount is None or v.amount <= 0:

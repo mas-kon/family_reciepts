@@ -139,9 +139,21 @@ async def test_bot_reply_in_english(session):
 def test_prompts_name_the_family_language():
     from app.llm.prompt import localize, receipt_system
 
-    assert "на русском" in receipt_system(["x"]) and "{lang}" not in receipt_system(["x"])
+    assert "in Russian" in receipt_system(["x"]) and "{lang}" not in receipt_system(["x"])
     i18n.use_language("en")
     p = receipt_system(["x"])
-    assert "на английском" in p and "На русском" not in p and "{deposit}" not in p and "Bottle deposit" in p
+    assert "in English" in p and "in Russian" not in p and "{deposit}" not in p and "Bottle deposit" in p
     i18n.use_language("bg")
-    assert "на болгарском" in localize("название на {lang}")
+    assert "in Bulgarian" in localize("a name in {lang}")
+
+
+def test_instructions_are_english():
+    import re
+
+    from app.ask import TOOLS
+    from app.llm import prompt
+
+    texts = [getattr(prompt, n) for n in dir(prompt) if n.endswith(("_SYSTEM", "_USER"))] + [str(TOOLS)]
+    for text in texts:
+        # Bulgarian receipt words are kept on purpose; Russian instructions are not
+        assert not re.search(r"\b(?:Верни|Ты|Правила|Категории)\b", text)

@@ -1,68 +1,69 @@
 from app.i18n import t
 
 RECEIPT_SYSTEM = """\
-Ты распознаёшь покупки: кассовые чеки по фото, а также электронные чеки, скриншоты онлайн-заказов
-и доставок. Чеки в основном из Болгарии, текст на болгарском.
-Верни ТОЛЬКО JSON без пояснений и без markdown, строго по схеме:
+You read purchases: cash register receipts from photos, and also electronic receipts, screenshots of
+online orders and deliveries. The receipts are mostly from Bulgaria, the text is in Bulgarian.
+Return ONLY JSON, no explanations and no markdown, strictly following this schema:
 
 {
   "is_receipt": true,
-  "store": "название магазина или null",
-  "purchased_at": "YYYY-MM-DDTHH:MM или null",
+  "store": "short brand name of the store, without legal form, address or branch number, or null",
+  "purchased_at": "YYYY-MM-DDTHH:MM or null",
   "total": 0.00,
   "items": [
     {
-      "name_original": "название позиции как в чеке",
-      "name_ru": "понятное название на {lang}",
+      "name_original": "line name as printed on the receipt",
+      "name_ru": "clear product name in {lang}",
       "qty": 1,
       "unit_price": 0.00,
       "total": 0.00,
-      "category": "одна категория из списка ниже, дословно",
+      "category": "exactly one category from the list below, verbatim",
       "warranty_months": null
     }
   ]
 }
 
-Правила:
-- Если это не покупка (не чек, не заказ, не квитанция об оплате), верни {"is_receipt": false}.
-  Банковская выписка, список операций по счёту или из приложения банка это не чек.
-- Для скриншота заказа или доставки store это сервис или магазин, позиции это заказанные товары,
-  доставку и сервисный сбор добавь отдельными позициями.
-- warranty_months: если в чеке указан гарантийный срок, укажи его в месяцах. Для техники, электроники
-  и бытовых приборов дороже 30 € без указанного срока ставь 24. Для всего остального null.
-- Если в чеке нет списка товаров, а только итог (так бывает в овощных лавках и на рынке),
-  верни одну позицию: name_original из подписи пользователя или вида магазина, total равен итогу,
-  категорию выбери по подписи пользователя или по виду магазина.
-- Подпись пользователя, если есть, подсказывает, что куплено и для чего.
-- total у позиции это итоговая сумма строки. qty для весового товара в кг, дробным числом.
-- Скидки (ОТСТЪПКА, НАМАЛЕНИЕ, отстъпка) добавь отдельной позицией с отрицательным total
-  и той же категорией, что у товара, к которому скидка относится.
-- Залог за тару (депозит, амбалаж) относится к категории "{deposit}".
-- Не включай строки ОБЩА СУМА, МЕЖДИННА СУМА, ДДС, РЕСТО, В БРОЙ, КАРТА, они не товары.
-- Все суммы в евро. Если цены указаны в двух валютах (лв. и €), бери только суммы в евро.
-- total чека это итог к оплате (ОБЩА СУМА / СУМА).
-- Числа пиши с точкой, без валюты.
-- name_ru: короткое понятное название на {lang}, без кодов и весов.
+Rules:
+- If this is not a purchase (not a receipt, an order or a payment confirmation), return {"is_receipt": false}.
+  A bank statement, a list of account operations or of a bank app's transactions is not a receipt.
+- For an order or delivery screenshot, store is the service or the shop and the lines are the ordered
+  goods; add delivery and the service fee as separate lines.
+- warranty_months: if the receipt states a warranty period, give it in months. For electronics and
+  household appliances costing more than 30 € with no stated period, put 24. For everything else null.
+- If the receipt has no list of goods, only a total (this happens at greengrocers and markets),
+  return one line: name_original from the user's caption or the kind of shop, total equal to the total,
+  and pick the category from the caption or the kind of shop.
+- The user's caption, if there is one, hints at what was bought and what for.
+- A line's total is the final amount of that line. qty for goods sold by weight is in kg, as a fraction.
+- Discounts (ОТСТЪПКА, НАМАЛЕНИЕ, отстъпка) are added as a separate line with a negative total
+  and the same category as the product the discount applies to.
+- A deposit for packaging (депозит, амбалаж) belongs to the category "{deposit}".
+- Do not include the lines ОБЩА СУМА, МЕЖДИННА СУМА, ДДС, РЕСТО, В БРОЙ, КАРТА: they are not goods.
+- All amounts are in euros. If prices are given in two currencies (лв. and €), take only the euro amounts.
+- The receipt's total is the amount to pay (ОБЩА СУМА / СУМА).
+- Write numbers with a dot, without a currency.
+- name_ru: a short clear name in {lang}, without codes and weights. The field name is historical:
+  write it in {lang} whatever the field name suggests. Keep brand names as they are printed.
 
-Категории:
+Categories:
 {categories}
 """
 
-RECEIPT_USER = "Распознай этот чек."
+RECEIPT_USER = "Read this receipt."
 
 MANUAL_SYSTEM = """\
-Пользователь записывает трату одной строкой: название и сумма. Все суммы в евро.
-Верни ТОЛЬКО JSON: {"name": "...", "amount": 0.00, "category": "..."}
-name: что купили, с заглавной буквы.
-category: одна категория из списка, дословно.
+The user records an expense in one line: a name and an amount. All amounts are in euros.
+Return ONLY JSON: {"name": "...", "amount": 0.00, "category": "..."}
+name: what was bought, with a capital letter.
+category: exactly one category from the list, verbatim.
 
-Категории:
+Categories:
 {categories}
 """
 
 
 def localize(prompt: str) -> str:
-    """The family's language in a prompt: instructions stay in one language, the texts the model
+    """The family's language in a prompt: the instructions are in English, the texts the model
     writes (product names, comments, answers) come out in the family's language."""
     return prompt.replace("{lang}", t("prompt.lang")).replace("{deposit}", t("cat.deposit"))
 
@@ -79,95 +80,95 @@ def manual_system(paths: list[str]) -> str:
     return localize(MANUAL_SYSTEM).replace("{categories}", categories_block(paths))
 
 
-RECEIPT_TEXT_USER = "Ниже текст электронного чека или письма о покупке. Распознай покупку.\n\n"
+RECEIPT_TEXT_USER = "Below is the text of an electronic receipt or of an e-mail about a purchase. Read the purchase.\n\n"
 
 BANK_SYSTEM = """\
-Ты разбираешь банковские уведомления (SMS, push) и выписки. Текст бывает на болгарском, русском
-или английском. Верни ТОЛЬКО JSON:
-{"transactions": [{"date": "YYYY-MM-DDTHH:MM или null", "amount": 0.00, "merchant": "где платили",
-"card": "последние 4 цифры карты или null", "type": "purchase", "counterparty": null}]}
+You parse bank notifications (SMS, push) and statements. The text may be in Bulgarian, Russian
+or English. Return ONLY JSON:
+{"transactions": [{"date": "YYYY-MM-DDTHH:MM or null", "amount": 0.00, "merchant": "where it was paid",
+"card": "last 4 digits of the card or null", "type": "purchase", "counterparty": null}]}
 
-type, одно из:
-- "purchase": потрачено. Покупка, оплата услуги или подписки, комиссия банка, снятие наличных.
-- "income": получено от организации. Зарплата, возврат за покупку, кэшбэк, проценты, пособие.
-- "transfer_out": перевод денег человеку. counterparty = имя получателя, как в банке.
-- "transfer_in": перевод от человека. counterparty = имя отправителя, как в банке.
-- "own": деньги не потрачены и не получены. Перевод между своими счетами (balance transfer,
-  со своего счёта на свой), пополнение счёта со своей карты (top-up, funding, Google Pay с карты),
-  обмен валюты.
+type, one of:
+- "purchase": money spent. A purchase, payment for a service or a subscription, a bank fee, a cash withdrawal.
+- "income": received from an organisation. Salary, a refund for a purchase, cashback, interest, a benefit.
+- "transfer_out": money sent to a person. counterparty = the recipient's name as the bank writes it.
+- "transfer_in": a transfer from a person. counterparty = the sender's name as the bank writes it.
+- "own": money neither spent nor received. A transfer between own accounts (balance transfer,
+  from own account to own account), a top-up of an account from own card (top-up, funding, Google Pay from a card),
+  currency exchange.
 
-Правила:
-- Строки с остатком, балансом и итогами за период не включай вовсе.
-- В выписке с колонками Дебит/Кредит или Списания/Пополнения сумма в дебете (списаниях) это
-  исходящая операция, в кредите (пополнениях) входящая. Нулевую сторону не учитывай.
-- amount всегда положительный, в евро. Если указаны две валюты, бери евро.
-- merchant без кодов терминала и городов: только название магазина или сервиса.
-  Для перевода merchant "Перевод: Имя Фамилия", для входящего "Перевод от: Имя Фамилия".
-- card: последние 4 цифры карты, которой платили или с которой пополнили.
-- Если текст не про банковские операции, верни {"transactions": []}.
+Rules:
+- Do not include lines with a remainder, a balance or totals for the period at all.
+- In a statement with Debit/Credit or Withdrawals/Deposits columns, an amount in the debit (withdrawals)
+  column is an outgoing operation, in the credit (deposits) column an incoming one. Ignore the zero side.
+- amount is always positive, in euros. If two currencies are given, take the euro.
+- merchant without terminal codes and cities: only the name of the shop or service.
+  For a transfer merchant is "Transfer: First Last", for an incoming one "Transfer from: First Last".
+- card: the last 4 digits of the card that was paid with or topped up from.
+- If the text is not about bank operations, return {"transactions": []}.
 """
 
 VOICE_SYSTEM = """\
-Тебе присылают голосовое сообщение из семейного чата. Иногда в нём человек записывает трату
-(что купил и за сколько), но часто это обычный разговор, шум или тишина.
-Верни ТОЛЬКО JSON:
-{"has_speech": true, "transcript": "дословно, что сказано", "is_expense": true,
-"who": null, "name": "что купили", "amount": 0.00}
+You are sent a voice message from a family chat. Sometimes a person records an expense in it
+(what they bought and for how much), but often it is ordinary conversation, noise or silence.
+Return ONLY JSON:
+{"has_speech": true, "transcript": "verbatim, what was said", "is_expense": true,
+"who": null, "name": "what was bought", "amount": 0.00}
 
-Правила:
-- Записывай только то, что действительно слышно. Ничего не придумывай и не угадывай.
-- Если речи нет (тишина, музыка, шум, тон), верни has_speech false, transcript пустой, amount null.
-- is_expense true, только если человек явно называет покупку или трату и её сумму.
-  Иначе is_expense false и amount null.
-- who заполняй, только если трата явно за другого члена семьи. Имя приведи к форме из списка семьи.
-- Все суммы в евро.
+Rules:
+- Record only what is actually audible. Do not invent or guess anything.
+- If there is no speech (silence, music, noise, a tone), return has_speech false, an empty transcript, amount null.
+- is_expense is true only if the person clearly names a purchase or an expense and its amount.
+  Otherwise is_expense is false and amount is null.
+- Fill who only if the expense is clearly for another family member. Bring the name to the form from the family list.
+- All amounts are in euros.
 
-Члены семьи: {family}
+Family members: {family}
 """
 
 COMMENT_SYSTEM = """\
-Ты помогаешь семье следить за расходами. По данным за месяц напиши 2–4 коротких предложения
-на {lang}: что заметно выросло или упало по сравнению с прошлым месяцем, что необычно, где превышен
-бюджет. Если есть доходы (income), можно сказать, сколько осталось. Только факты из данных,
-без советов, приветствий, списков и markdown. Суммы в евро.
+You help a family keep track of spending. From the data for the month write 2-4 short sentences
+in {lang}: what clearly grew or fell compared with the previous month, what is unusual, where a
+budget is exceeded. If there is income, you may say how much is left. Only facts from the data,
+no advice, greetings, lists or markdown. Amounts in euros.
 """
 
 PRODUCTS_SYSTEM = """\
-Ты объединяешь названия одного и того же товара из разных чеков, чтобы следить за его ценой.
-Тебе дают новые названия из чеков (болгарский, сокращения) и список уже известных товаров.
-Для каждого нового названия выбери известный товар, если это тот же товар (тот же вид, жирность,
-объём или вес упаковки), или придумай новое короткое название на {lang}.
-Разные объёмы и разные виды это разные товары. Название организации-поставщика (ООД, ЕООД, EOOD, ЕАД) и счёт за услугу (электричество, интернет, вода) не товар: для такой строки не выбирай известный товар, а назови её по самой услуге. Весовой товар без упаковки называй без веса.
-Верни ТОЛЬКО JSON: {"products": {"название из чека": "товар"}}
+You merge the names of the same product from different receipts, to track its price.
+You get new names from receipts (Bulgarian, abbreviations) and a list of already known products.
+For each new name choose a known product if it is the same product (the same kind, fat content,
+volume or pack weight), or invent a new short name in {lang}.
+Different volumes and different kinds are different products. The name of a supplier organisation (ООД, ЕООД, EOOD, ЕАД) and a bill for a service (electricity, internet, water) are not products: for such a line do not choose a known product, name it after the service itself. Name a loose weighed product without the weight.
+Return ONLY JSON: {"products": {"name from the receipt": "product"}}
 """
 
 ASK_SYSTEM = """\
-Ты отвечаешь на вопросы семьи о её расходах и доходах. Сегодня {today}. Все суммы в евро.
-Переводы внутри семьи (например, карманные деньги ребёнку) не расход и не доход: ребёнок тратит
-их сам, и эти траты уже есть в расходах.
-Получай данные только через инструменты, ничего не выдумывай. Если данных нет, так и скажи.
-Отвечай коротко и на {lang}, суммы с двумя знаками после запятой. Простой текст без markdown:
-без звёздочек, решёток и таблиц. Перечисления отдельными строками через тире.
-Категории расходов: {categories}
-Члены семьи: {family}
+You answer a family's questions about their spending and income. Today is {today}. All amounts are in euros.
+Transfers inside the family (for example pocket money for a child) are neither spending nor income:
+the child spends it, and that spending is already in the expenses.
+Get data only through the tools, invent nothing. If there is no data, say so.
+Answer briefly and in {lang}, amounts with two decimals. Plain text without markdown:
+no asterisks, hashes or tables. Lists as separate lines with a dash.
+Expense categories: {categories}
+Family members: {family}
 """
 
 
-VOICE_USER = "Запиши трату из этого голосового сообщения."
+VOICE_USER = "Record the expense from this voice message."
 
 
 def receipt_user(hint: str | None) -> str:
-    return RECEIPT_USER + (f"\nПодпись пользователя к чеку: {hint}" if hint else "")
+    return RECEIPT_USER + (f"\nThe user's caption for the receipt: {hint}" if hint else "")
 
 
 def receipt_text_user(text: str, hint: str | None) -> str:
-    return RECEIPT_TEXT_USER + (f"Подпись пользователя: {hint}\n\n" if hint else "") + text
+    return RECEIPT_TEXT_USER + (f"The user's caption: {hint}\n\n" if hint else "") + text
 
 
 def products_user(names: list[str], known: list[str]) -> str:
     return (
-        "Известные товары:\n"
-        + ("\n".join(f"- {k}" for k in known) or "(пока нет)")
-        + "\n\nНовые названия из чеков:\n"
+        "Known products:\n"
+        + ("\n".join(f"- {k}" for k in known) or "(none yet)")
+        + "\n\nNew names from receipts:\n"
         + "\n".join(f"- {n}" for n in names)
     )

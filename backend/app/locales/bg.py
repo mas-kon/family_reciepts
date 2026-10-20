@@ -67,7 +67,6 @@ MESSAGES: dict[str, str | tuple[str, ...]] = {
     "bot.voice_unknown": "{problem}. Чух: „{heard}“",
     "voice.no_amount": "Не чух сумата",
     "voice.unknown_who": "Не знам кой е „{who}“",
-    "voice.nobody": "няма",
     "bot.llm_down_later": "❌ Изкуственият интелект не отговори, опитайте по-късно.",
     "bot.bank_nothing": "Не намерих операции за записване в текста.",
     "bot.bank_from": " от {date}",
@@ -225,7 +224,7 @@ MESSAGES: dict[str, str | tuple[str, ...]] = {
     "api.login_required": "Необходим е вход",
     "api.session_invalid": "Сесията е невалидна",
     "api.mail_hint_auth": "Проверете IMAP_USER и IMAP_PASSWORD в .env (за Gmail е нужна парола за приложение, не обикновената).",
-    "prompt.lang": "болгарском",
+    "prompt.lang": "Bulgarian",
     "ask.no_answer": "Не успях да отговоря.",
     "ask.too_many_steps": "Твърде много стъпки, въпросът не можа да се разбере",
 }

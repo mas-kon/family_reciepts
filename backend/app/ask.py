@@ -45,9 +45,9 @@ def _end(v: str | None) -> datetime | None:
 
 
 PERIOD = {
-    "date_from": {"type": "string", "description": "Начало периода YYYY-MM-DD, включительно"},
-    "date_to": {"type": "string", "description": "Конец периода YYYY-MM-DD, включительно"},
-    "person": {"type": "string", "description": "Имя члена семьи, если вопрос про одного человека"},
+    "date_from": {"type": "string", "description": "Start of the period, YYYY-MM-DD, inclusive"},
+    "date_to": {"type": "string", "description": "End of the period, YYYY-MM-DD, inclusive"},
+    "person": {"type": "string", "description": "Name of a family member, if the question is about one person"},
 }
 
 TOOLS = [
@@ -55,9 +55,9 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "get_summary",
-            "description": "Итоги за период: расходы всего, по категориям, подкатегориям, людям, "
-            "магазинам, самые затратные товары; income: доходы по категориям; transfers_total: "
-            "переводы внутри семьи (не расход и не доход).",
+            "description": "Totals for a period: all expenses, by category, subcategory, person, "
+            "store, the most expensive products; income: income by category; transfers_total: "
+            "transfers inside the family (neither spending nor income).",
             "parameters": {"type": "object", "properties": PERIOD},
         },
     },
@@ -65,12 +65,12 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "get_monthly",
-            "description": "Расходы (total) и доходы (income) по месяцам, расходы по категориям "
-            "верхнего уровня, за последние N месяцев.",
+            "description": "Expenses (total) and income (income) by month, expenses by top-level "
+            "category, for the last N months.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "months": {"type": "integer", "description": "Сколько месяцев, 1–36"},
+                    "months": {"type": "integer", "description": "How many months, 1-36"},
                     "person": PERIOD["person"],
                 },
             },
@@ -80,18 +80,18 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "search_purchases",
-            "description": "Поиск покупок по названию товара, магазину или описанию. Возвращает "
-            "сумму, количество и последние покупки с датой, магазином и ценой. Ищи по корню слова "
-            "на {lang} и по-болгарски (названия в чеках).",
+            "description": "Search purchases by product name, store or description. Returns "
+            "the sum, the count and the latest purchases with date, store and price. Search by the word stem "
+            "in {lang} and in Bulgarian (names on receipts).",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "query": {"type": "string", "description": "Слово для поиска"},
-                    "category": {"type": "string", "description": "Категория или подкатегория"},
+                    "query": {"type": "string", "description": "Word to search for"},
+                    "category": {"type": "string", "description": "Category or subcategory"},
                     "kind": {
                         "type": "string",
                         "enum": ["expense", "income"],
-                        "description": "expense: покупки (по умолчанию), income: доходы",
+                        "description": "expense: purchases (default), income: income",
                     },
                     **PERIOD,
                 },
@@ -111,7 +111,7 @@ async def _person_id(session: AsyncSession, person: str | None) -> int | None:
 async def _category_ids(session: AsyncSession, name: str | None) -> list[int] | None:
     if not name:
         return None
-    # the model may pass the full path "Продукты / Сладости и снеки"
+    # the model may pass the full path "Parent / Child"
     key = name.split("/")[-1].strip().lower()
     cats = list(await session.scalars(select(Category)))
     hit = [c for c in cats if c.name.lower() == key] or [c for c in cats if key in c.name.lower()]
@@ -214,7 +214,7 @@ async def answer(
     cats = ", ".join(
         leaf_categories(list(await session.scalars(select(Category).where(Category.kind == Kind.EXPENSE))))
     )
-    family = ", ".join(u.name for u in await session.scalars(select(User))) or t("voice.nobody")
+    family = ", ".join(u.name for u in await session.scalars(select(User))) or "none"
     system = (
         localize(ASK_SYSTEM).replace("{today}", f"{now_local():%Y-%m-%d}")
         .replace("{categories}", cats)
